@@ -103,6 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupTradeFilters();
   setupTopicFilters();
   setupPerformance();
+  initDateInputs();
 
   // Start auth + load server state
   bootstrap();
@@ -239,6 +240,40 @@ function applyRoleUI() {
       perfSelect.disabled = true;
     }
   }
+}
+
+// Initialize all date inputs with today's date visually and wire calendar opening.
+// For filter fields we mark them as "autofilled" so logic can ignore them until user changes.
+function initDateInputs() {
+  const today = new Date().toISOString().slice(0, 10);
+  const dateInputs = document.querySelectorAll('input[type="date"]');
+  dateInputs.forEach((input) => {
+    if (!input.value) {
+      input.value = today;
+      input.dataset.autofilled = "true";
+    }
+    function showPickerSafe() {
+      if (typeof input.showPicker === "function") {
+        try {
+          input.showPicker();
+        } catch {
+          // ignore
+        }
+      }
+    }
+    input.addEventListener("click", showPickerSafe);
+    input.addEventListener("focus", showPickerSafe);
+    input.addEventListener("change", () => {
+      input.dataset.autofilled = "false";
+    });
+  });
+}
+
+function getActiveDate(input) {
+  if (!input || !input.value) return null;
+  if (input.dataset.autofilled === "true") return null;
+  const d = new Date(input.value);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function setupDashboardFilters() {
@@ -406,11 +441,38 @@ function setupNavigation() {
 function renderDashboard() {
   const filterSelect = document.getElementById("dashboard-trader-filter");
   const traderFilter = filterSelect ? filterSelect.value : "all";
+  const exactEl = document.getElementById("dashboard-date-exact");
+  const fromEl = document.getElementById("dashboard-date-from");
+  const toEl = document.getElementById("dashboard-date-to");
 
-  const relevantTrades =
+  let relevantTrades =
     traderFilter === "all"
       ? trades
       : trades.filter((t) => t.trader === traderFilter);
+
+  const exact = getActiveDate(exactEl);
+  const fromDate = getActiveDate(fromEl);
+  const toDate = getActiveDate(toEl);
+
+  if (exact) {
+    const exactStr = exact.toISOString().slice(0, 10);
+    relevantTrades = relevantTrades.filter((t) => t.date === exactStr);
+  } else {
+    if (fromDate) {
+      relevantTrades = relevantTrades.filter((t) => {
+        if (!t.date) return false;
+        return new Date(t.date) >= fromDate;
+      });
+    }
+    if (toDate) {
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999);
+      relevantTrades = relevantTrades.filter((t) => {
+        if (!t.date) return false;
+        return new Date(t.date) <= end;
+      });
+    }
+  }
 
   const totalTrades = relevantTrades.length;
   const wins = relevantTrades.filter((t) => t.result === "win").length;
@@ -418,13 +480,27 @@ function renderDashboard() {
     (sum, t) => sum + (Number(t.pl) || 0),
     0
   );
+
+  // Aggregate financial risk vs reward based on entry/SL/TP/lot size
+  let totalRiskUsd = 0;
+  let totalRewardUsd = 0;
+  relevantTrades.forEach((t) => {
+    const entry = Number(t.entry);
+    const sl = Number(t.sl);
+    const tp = Number(t.tp);
+    const lotSize = Number(t.lotSize);
+    if (!entry || !sl || !tp || !lotSize || !Number.isFinite(lotSize)) return;
+    const pipValue = lotSize * 10; // USD per pip
+    const riskPips = Math.abs(entry - sl) * 10; // 10 pips per 1 price unit
+    const rewardPips = Math.abs(tp - entry) * 10;
+    const riskAmount = riskPips * pipValue;
+    const rewardAmount = rewardPips * pipValue;
+    totalRiskUsd += riskAmount;
+    totalRewardUsd += rewardAmount;
+  });
+
   const avgRR =
-    relevantTrades.length > 0
-      ? relevantTrades.reduce(
-          (sum, t) => sum + (Number(t.rr) || 0),
-          0
-        ) / relevantTrades.length
-      : 0;
+    totalRiskUsd > 0 ? totalRewardUsd / totalRiskUsd : 0;
 
   const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
 
@@ -433,7 +509,16 @@ function renderDashboard() {
     winRate.toFixed(1) + "%";
   document.getElementById("stat-total-pl").textContent =
     formatCurrency(totalPL);
-  document.getElementById("stat-avg-rr").textContent = formatRR(avgRR);
+  const avgRrEl = document.getElementById("stat-avg-rr");
+  if (avgRrEl) {
+    const rrText =
+      totalRiskUsd > 0
+        ? `${avgRR.toFixed(2)} (Risk ${formatCurrency(
+            totalRiskUsd
+          )} / Reward ${formatCurrency(totalRewardUsd)})`
+        : "0.00 (Risk $0.00 / Reward $0.00)";
+    avgRrEl.textContent = rrText;
+  }
 
   // Recent 50 trades (sorted by date newest first)
   const tbody = document.getElementById("dashboard-recent-trades");
@@ -476,43 +561,7 @@ function renderDashboard() {
 function setupTradeForm() {
   const form = document.getElementById("trade-form");
   const cancelBtn = document.getElementById("cancel-edit-btn");
-  const dateInput = document.getElementById("date");
   const screenshotInput = document.getElementById("screenshot");
-
-  function todayISO() {
-    return new Date().toISOString().slice(0, 10);
-  }
-
-  function setDefaultDateIfEmpty() {
-    if (dateInput && !dateInput.value) {
-      dateInput.value = todayISO();
-    }
-  }
-
-  // Default current date
-  setDefaultDateIfEmpty();
-
-  // Best-effort calendar open on click (where supported)
-  if (dateInput) {
-    dateInput.addEventListener("click", () => {
-      if (typeof dateInput.showPicker === "function") {
-        try {
-          dateInput.showPicker();
-        } catch {
-          // ignore
-        }
-      }
-    });
-    dateInput.addEventListener("focus", () => {
-      if (typeof dateInput.showPicker === "function") {
-        try {
-          dateInput.showPicker();
-        } catch {
-          // ignore
-        }
-      }
-    });
-  }
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -615,7 +664,6 @@ function setupTradeForm() {
     editingTradeId = null;
     document.getElementById("trade-form-title").textContent = "Add Trade";
     cancelBtn.style.display = "none";
-    setDefaultDateIfEmpty();
   });
 }
 
@@ -639,8 +687,8 @@ function renderTradesTable() {
 
   const fromEl = document.getElementById("trade-filter-date-from");
   const toEl = document.getElementById("trade-filter-date-to");
-  const fromDate = fromEl && fromEl.value ? new Date(fromEl.value) : null;
-  const toDate = toEl && toEl.value ? new Date(toEl.value) : null;
+  const fromDate = getActiveDate(fromEl);
+  const toDate = getActiveDate(toEl);
 
   // Sort by date (newest first)
   let filtered = [...trades];
@@ -1150,6 +1198,22 @@ function setupRiskCalculator() {
   const slCustomEl = document.getElementById("calc-sl-custom");
   const tpPriceEl = document.getElementById("calc-tp-price");
   const liqPriceEl = document.getElementById("calc-liquidity-price");
+  const riskPctInput = document.getElementById("risk-percent");
+  const rrInput = document.getElementById("rr-ratio");
+
+  // Only one of "custom risk %" or "custom R:R" active at once
+  if (riskPctInput && rrInput) {
+    riskPctInput.addEventListener("input", () => {
+      if (riskPctInput.value) {
+        rrInput.value = "";
+      }
+    });
+    rrInput.addEventListener("input", () => {
+      if (rrInput.value) {
+        riskPctInput.value = "";
+      }
+    });
+  }
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -1165,9 +1229,9 @@ function setupRiskCalculator() {
       document.getElementById("calc-entry").value
     );
     const customRiskPct = parseFloat(
-      document.getElementById("risk-percent").value
+      riskPctInput ? riskPctInput.value : ""
     );
-    const rrRaw = String(document.getElementById("rr-ratio")?.value || "").trim();
+    const rrRaw = String(rrInput ? rrInput.value : "").trim();
 
     let lotSize =
       lotSelect === "custom"
@@ -1194,22 +1258,44 @@ function setupRiskCalculator() {
     }
 
     function parseRR(text) {
-      if (!text) return { risk: 1, reward: 2 };
+      if (!text) return { riskPct: 2, rewardMultiplier: 2 }; // default 2% risk, 1:2 R:R
       const m = text.replace(/\s+/g, "").match(/^(\d*\.?\d+):(\d*\.?\d+)$/);
       if (!m) return null;
-      const risk = Number(m[1]);
-      const reward = Number(m[2]);
-      if (!isFinite(risk) || !isFinite(reward) || risk <= 0 || reward <= 0) return null;
-      return { risk, reward };
+      const riskPart = Number(m[1]);
+      const rewardPart = Number(m[2]);
+      if (!isFinite(riskPart) || !isFinite(rewardPart) || riskPart <= 0 || rewardPart <= 0)
+        return null;
+      const riskPct = riskPart;
+      const rewardMultiplier = rewardPart / riskPart;
+      return { riskPct, rewardMultiplier };
     }
 
-    const rr = parseRR(rrRaw);
-    if (!rr) {
+    let effectiveRiskPct;
+    let rewardMultiplier;
+
+    if (rrRaw && isFinite(customRiskPct)) {
       warningEl.textContent =
-        'Invalid R:R format. Use like "1:2", "1:3", or "3:4".';
+        "Please use either Custom Risk % or Custom R:R, not both at the same time.";
       return;
     }
-    const rewardMultiplier = rr.reward / rr.risk;
+
+    if (rrRaw) {
+      const parsed = parseRR(rrRaw);
+      if (!parsed) {
+        warningEl.textContent =
+          'Invalid R:R format. Use like "1:2", "1:3", or "3:4".';
+        return;
+      }
+      effectiveRiskPct = parsed.riskPct;
+      rewardMultiplier = parsed.rewardMultiplier;
+    } else if (isFinite(customRiskPct) && customRiskPct > 0) {
+      effectiveRiskPct = customRiskPct;
+      rewardMultiplier = 2; // default 1:2 R:R when only custom % is set
+    } else {
+      // Fully defaulted: 2% risk, 1:2 R:R
+      effectiveRiskPct = 2;
+      rewardMultiplier = 2;
+    }
 
     // Helper for SL/TP based on risk %
     function levelsForRisk(riskPct) {
@@ -1228,10 +1314,6 @@ function setupRiskCalculator() {
 
     const lvl1 = levelsForRisk(1);
     const lvl2 = levelsForRisk(2);
-    const effectiveRiskPct =
-      isFinite(customRiskPct) && customRiskPct > 0
-        ? customRiskPct
-        : 2;
     const lvlCustom = levelsForRisk(effectiveRiskPct);
 
     // Liquidity = 100% loss of balance
@@ -1242,59 +1324,60 @@ function setupRiskCalculator() {
     }
 
     if (lvl1) {
-      sl1El.textContent =
-        "SL @ 1%: " +
+      sl1El.innerHTML =
+        'SL @ 1% = <span class="calc-risk">' +
         fmtPrice(lvl1.slPrice) +
-        " (risk " +
+        "</span> &nbsp; <span class=\"calc-risk\">Risk " +
         formatCurrency(lvl1.riskAmount) +
-        ")";
+        "</span>";
     } else {
-      sl1El.textContent = "SL @ 1%: -";
+      sl1El.textContent = "SL @ 1% = -";
     }
 
     if (lvl2) {
-      sl2El.textContent =
-        "SL @ 2%: " +
+      sl2El.innerHTML =
+        'SL @ 2% = <span class="calc-risk">' +
         fmtPrice(lvl2.slPrice) +
-        " (risk " +
+        "</span> &nbsp; <span class=\"calc-risk\">Risk " +
         formatCurrency(lvl2.riskAmount) +
-        ")";
+        "</span>";
     } else {
-      sl2El.textContent = "SL @ 2%: -";
+      sl2El.textContent = "SL @ 2% = -";
     }
 
     if (lvlCustom) {
-      slCustomEl.textContent =
+      slCustomEl.innerHTML =
         "SL @ " +
         effectiveRiskPct.toFixed(2) +
-        "% (R:R " +
-        rr.risk +
-        ":" +
-        rr.reward +
-        "): " +
+        "% = <span class=\"calc-risk\">" +
         fmtPrice(lvlCustom.slPrice) +
-        " (risk " +
+        "</span> &nbsp; <span class=\"calc-risk\">Risk " +
         formatCurrency(lvlCustom.riskAmount) +
-        ")";
-      tpPriceEl.textContent =
-        "Take Profit: " + fmtPrice(lvlCustom.tpPrice);
+        "</span>";
+      const totalReward = lvlCustom.riskAmount * rewardMultiplier;
+      tpPriceEl.innerHTML =
+        'Take Profit = <span class="calc-reward">' +
+        fmtPrice(lvlCustom.tpPrice) +
+        "</span> &nbsp; <span class=\"calc-reward\">Reward " +
+        formatCurrency(totalReward) +
+        "</span>";
 
       riskAmountEl.textContent = formatCurrency(lvlCustom.riskAmount);
-      rewardAmountEl.textContent = formatCurrency(
-        lvlCustom.riskAmount * rewardMultiplier
-      );
+      rewardAmountEl.textContent = formatCurrency(totalReward);
     } else {
-      slCustomEl.textContent = "SL @ custom %: -";
-      tpPriceEl.textContent = "Take Profit (2R from chosen %): -";
+      slCustomEl.textContent = "SL @ custom % = -";
+      tpPriceEl.textContent = "Take Profit = -";
       riskAmountEl.textContent = "$0.00";
       rewardAmountEl.textContent = "$0.00";
     }
 
     if (lvlLiq) {
-      liqPriceEl.textContent =
-        "Liquidity (100% loss): " + fmtPrice(lvlLiq.slPrice);
+      liqPriceEl.innerHTML =
+        'Liquidity (100% loss) = <span class="calc-liquidity">' +
+        fmtPrice(lvlLiq.slPrice) +
+        "</span>";
     } else {
-      liqPriceEl.textContent = "Liquidity (100% loss): -";
+      liqPriceEl.textContent = "Liquidity (100% loss) = -";
     }
 
     // Simple guidance message
@@ -1466,6 +1549,8 @@ function renderPerformance() {
   const summaryActive = document.getElementById("perf-summary-active");
   const fromEl = document.getElementById("performance-date-from");
   const toEl = document.getElementById("performance-date-to");
+  const chartSvg = document.getElementById("performance-chart");
+  const chartTooltip = document.getElementById("performance-chart-tooltip");
 
   if (!select || !tbody || !summaryPl || !summaryDays || !summaryActive) {
     return;
@@ -1478,7 +1563,7 @@ function renderPerformance() {
   // Group trades by date for this trader
   const byDate = {};
   const userTrades = trades
-    .filter((t) => t.trader === traderName && t.date)
+    .filter((t) => (traderName === "all" ? true : t.trader === traderName) && t.date)
     .filter((t) => {
       const d = new Date(t.date);
       if (fromDate && d < fromDate) return false;
@@ -1528,12 +1613,15 @@ function renderPerformance() {
 
     tr.innerHTML = `
       <td>${escapeHTML(d)}</td>
-      <td>${formatCurrency(info.pl)}</td>
+      <td class="${info.pl > 0 ? "performance-profit" : info.pl < 0 ? "performance-loss" : ""}">${formatCurrency(info.pl)}</td>
       <td>${status}</td>
       <td>${info.count}</td>
       <td class="${highRisk ? "performance-high-risk" : ""}">${
       info.maxRiskPct ? info.maxRiskPct.toFixed(2) + "%" : "-"
     }</td>
+      <td class="performance-reward">${formatCurrency(
+        info.pl > 0 ? info.pl : 0
+      )}</td>
     `;
 
     tbody.appendChild(tr);
@@ -1553,6 +1641,85 @@ function renderPerformance() {
   summaryDays.textContent = "Active days with trades: " + activeDays;
   summaryActive.textContent =
     "Trade count: " + userTrades.length + " total trades for this trader";
+
+  // Donut chart: profitable vs loss vs breakeven days
+  if (chartSvg && chartTooltip) {
+    // Clear old slices except the background circle
+    const oldSlices = chartSvg.querySelectorAll("path[data-segment]");
+    oldSlices.forEach((el) => el.remove());
+
+    let profitableDays = 0;
+    let losingDays = 0;
+    let breakevenDays = 0;
+    dateKeys.forEach((d) => {
+      const info = byDate[d];
+      if (info.pl > 0) profitableDays += 1;
+      else if (info.pl < 0) losingDays += 1;
+      else breakevenDays += 1;
+    });
+
+    const totalDays = profitableDays + losingDays + breakevenDays || 1;
+    const segments = [
+      { key: "profitable", value: profitableDays, color: "#43d19e" },
+      { key: "loss", value: losingDays, color: "#ff4e6a" },
+      { key: "breakeven", value: breakevenDays, color: "#858cb0" },
+    ].filter((s) => s.value > 0);
+
+    let cumulative = 0;
+    const center = 60;
+    const radius = 40;
+
+    segments.forEach((seg) => {
+      const startAngle = (cumulative / totalDays) * 2 * Math.PI;
+      const endAngle = ((cumulative + seg.value) / totalDays) * 2 * Math.PI;
+      cumulative += seg.value;
+
+      const x1 = center + radius * Math.cos(startAngle - Math.PI / 2);
+      const y1 = center + radius * Math.sin(startAngle - Math.PI / 2);
+      const x2 = center + radius * Math.cos(endAngle - Math.PI / 2);
+      const y2 = center + radius * Math.sin(endAngle - Math.PI / 2);
+      const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+
+      const pathData = [
+        `M ${center} ${center}`,
+        `L ${x1} ${y1}`,
+        `A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`,
+        "Z",
+      ].join(" ");
+
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", pathData);
+      path.setAttribute("fill", seg.color);
+      path.dataset.segment = seg.key;
+      chartSvg.appendChild(path);
+    });
+
+    function setTooltip(key) {
+      let label = "";
+      let val = 0;
+      if (key === "profitable") {
+        label = "Profitable days";
+        val = profitableDays;
+      } else if (key === "loss") {
+        label = "Losing days";
+        val = losingDays;
+      } else if (key === "breakeven") {
+        label = "Break-even days";
+        val = breakevenDays;
+      }
+      const pct = totalDays ? ((val / totalDays) * 100).toFixed(1) : "0.0";
+      chartTooltip.textContent = `${label}: ${val} (${pct}%)`;
+    }
+
+    const legendButtons = document.querySelectorAll(
+      ".performance-chart-legend button[data-segment]"
+    );
+    legendButtons.forEach((btn) => {
+      const key = btn.getAttribute("data-segment");
+      btn.onmouseenter = () => setTooltip(key);
+      btn.onfocus = () => setTooltip(key);
+    });
+  }
 }
 
 function exportPerformanceCsv(traderName) {
@@ -1560,12 +1727,12 @@ function exportPerformanceCsv(traderName) {
 
   const fromEl = document.getElementById("performance-date-from");
   const toEl = document.getElementById("performance-date-to");
-  const fromDate = fromEl && fromEl.value ? new Date(fromEl.value) : null;
-  const toDate = toEl && toEl.value ? new Date(toEl.value) : null;
+  const fromDate = getActiveDate(fromEl);
+  const toDate = getActiveDate(toEl);
 
   const byDate = {};
   const userTrades = trades
-    .filter((t) => t.trader === traderName && t.date)
+    .filter((t) => (traderName === "all" ? true : t.trader === traderName) && t.date)
     .filter((t) => {
       const d = new Date(t.date);
       if (fromDate && d < fromDate) return false;

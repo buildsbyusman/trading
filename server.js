@@ -195,9 +195,6 @@ app.post("/api/auth/signup", async (req, res) => {
   if (users.some((u) => u.email === email)) {
     return res.status(409).json({ error: "Email already exists" });
   }
-  if (users.some((u) => u.traderName === traderName)) {
-    return res.status(409).json({ error: "Trader already registered" });
-  }
 
   const role = ADMIN_TRADERS.has(traderName) ? "admin" : "user";
   const passwordHash = await bcrypt.hash(password, 10);

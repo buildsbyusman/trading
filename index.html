@@ -150,6 +150,20 @@
         <div class="card recent-trades-card">
           <div class="card-header">
             <h2>Recent 50 Trades</h2>
+            <div class="history-filters">
+              <div class="form-group">
+                <label for="dashboard-date-exact">Specific date</label>
+                <input type="date" id="dashboard-date-exact" />
+              </div>
+              <div class="form-group">
+                <label for="dashboard-date-from">From date</label>
+                <input type="date" id="dashboard-date-from" />
+              </div>
+              <div class="form-group">
+                <label for="dashboard-date-to">To date</label>
+                <input type="date" id="dashboard-date-to" />
+              </div>
+            </div>
           </div>
           <div class="table-wrapper small">
             <table>
@@ -333,6 +347,7 @@
             <div class="form-group">
               <label for="performance-trader-select">Select trader</label>
               <select id="performance-trader-select">
+                <option value="all">All traders</option>
                 <option value="Dr. Adnan">Dr. Adnan</option>
                 <option value="Muhammad Usman">Muhammad Usman</option>
                 <option value="Amna">Amna</option>
@@ -369,11 +384,27 @@
                   <th>Status</th>
                   <th>Trades</th>
                   <th>Max Risk %</th>
+                  <th>Reward ($)</th>
                 </tr>
               </thead>
               <tbody id="performance-body">
               </tbody>
             </table>
+          </div>
+          <div id="performance-chart-container" class="performance-chart-container">
+            <div class="performance-chart-header">Performance snapshot</div>
+            <svg id="performance-chart" viewBox="0 0 120 120" role="img" aria-label="Performance donut chart">
+              <!-- Slices drawn by JS -->
+              <circle cx="60" cy="60" r="40" class="performance-chart-bg"></circle>
+            </svg>
+            <div class="performance-chart-legend">
+              <button type="button" data-segment="profitable">Profitable days</button>
+              <button type="button" data-segment="loss">Losing days</button>
+              <button type="button" data-segment="breakeven">Break-even days</button>
+            </div>
+            <div id="performance-chart-tooltip" class="performance-chart-tooltip">
+              Hover over legend to see breakdown.
+            </div>
           </div>
         </div>
       </section>
@@ -504,7 +535,7 @@
               <div class="form-group">
                 <label for="rr-ratio">Custom R:R (Risk : Reward)</label>
                 <input type="text" id="rr-ratio" placeholder="e.g. 1:2 (default), 1:3, 3:4" />
-                <small>If left empty, calculator uses 1:2 (2R) by default.</small>
+                <small>If left empty, calculator uses 1:2 (risk 2% → reward 4%) by default.</small>
               </div>
             </div>
 
@@ -530,11 +561,11 @@
             </div>
             <div class="calculator-detail">
               <p id="risk-warning" class="risk-warning">Enter values to see risk analysis.</p>
-              <p id="calc-sl-1">SL @ 1%: -</p>
-              <p id="calc-sl-2">SL @ 2%: -</p>
-              <p id="calc-sl-custom">SL @ custom % (chosen R side): -</p>
-              <p id="calc-tp-price">Take Profit (R:R based on custom %): -</p>
-              <p id="calc-liquidity-price">Liquidity (100% loss price): -</p>
+              <p id="calc-sl-1">SL @ 1% = -</p>
+              <p id="calc-sl-2">SL @ 2% = -</p>
+              <p id="calc-sl-custom">SL @ custom % = -</p>
+              <p id="calc-tp-price">Take Profit = -</p>
+              <p id="calc-liquidity-price">Liquidity (100% loss price) = -</p>
             </div>
           </div>
         </div>
