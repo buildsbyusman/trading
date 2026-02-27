@@ -520,17 +520,22 @@ function renderDashboard() {
   document.getElementById("stat-total-trades").textContent = totalTrades;
   document.getElementById("stat-win-rate").textContent =
     winRate.toFixed(1) + "%";
-  document.getElementById("stat-total-pl").textContent =
-    formatCurrency(totalPL);
+
+  const totalPlEl = document.getElementById("stat-total-pl");
+  if (totalPlEl) {
+    totalPlEl.textContent = formatCurrency(totalPL);
+    totalPlEl.className = "stat-value " + (totalPL > 0 ? "stat-pl-profit" : totalPL < 0 ? "stat-pl-loss" : "");
+  }
+
   const avgRrEl = document.getElementById("stat-avg-rr");
   if (avgRrEl) {
-    const rrText =
-      totalRiskUsd > 0
-        ? `${avgRR.toFixed(2)} (Risk ${formatCurrency(
-            totalRiskUsd
-          )} / Reward ${formatCurrency(totalRewardUsd)})`
-        : "0.00 (Risk $0.00 / Reward $0.00)";
-    avgRrEl.textContent = rrText;
+    if (totalRiskUsd > 0) {
+      const rewardRatio = totalRewardUsd / totalRiskUsd;
+      avgRrEl.innerHTML =
+        "1 : " + rewardRatio.toFixed(2) + " <span class=\"stat-rr-meta\">(Risk " + formatCurrency(totalRiskUsd) + " / Reward " + formatCurrency(totalRewardUsd) + ")</span>";
+    } else {
+      avgRrEl.textContent = "1 : 0.00 (Risk $0.00 / Reward $0.00)";
+    }
   }
 
   // Recent 50 trades (sorted by date newest first)
@@ -659,8 +664,6 @@ function setupTradeForm() {
       return;
     }
 
-    // Sync from server so trade history is up to date, then re-render immediately
-    await loadStoreFromServer();
     renderDashboard();
     renderTradesTable();
     renderTradeDetail(null);
@@ -974,8 +977,6 @@ function setupTopicForm() {
       return;
     }
 
-    // Sync from server so topic list is up to date, then re-render immediately
-    await loadStoreFromServer();
     renderTopicsList();
     renderTopicDetail(null);
 
@@ -1583,9 +1584,7 @@ function renderPerformance() {
   const fromDate = fromEl && fromEl.value ? new Date(fromEl.value) : null;
   const toDate = toEl && toEl.value ? new Date(toEl.value) : null;
 
-  // Group trades by date for this trader
-  const byDate = {};
-  const userTrades = trades
+  const filteredTrades = trades
     .filter((t) => (traderName === "all" ? true : t.trader === traderName) && t.date)
     .filter((t) => {
       const d = new Date(t.date);
@@ -1598,76 +1597,77 @@ function renderPerformance() {
       return true;
     });
 
-  userTrades.forEach((t) => {
-    const d = t.date;
-    if (!byDate[d]) {
-      byDate[d] = { pl: 0, count: 0, maxRiskPct: 0 };
+  // When "all" traders: one row per trader (cumulative per trader). When one trader: one row.
+  const byTrader = {};
+  filteredTrades.forEach((t) => {
+    const name = t.trader || "Unknown";
+    if (!byTrader[name]) {
+      byTrader[name] = { pl: 0, count: 0, maxRiskPct: 0 };
     }
     const priceRiskPct =
       t.entry && t.sl ? (Math.abs(t.entry - t.sl) / Math.abs(t.entry)) * 100 : 0;
-    byDate[d].pl += Number(t.pl) || 0;
-    byDate[d].count += 1;
-    byDate[d].maxRiskPct = Math.max(byDate[d].maxRiskPct, priceRiskPct);
+    byTrader[name].pl += Number(t.pl) || 0;
+    byTrader[name].count += 1;
+    byTrader[name].maxRiskPct = Math.max(byTrader[name].maxRiskPct, priceRiskPct);
   });
 
-  const dateKeys = Object.keys(byDate).sort(
-    (a, b) => new Date(b) - new Date(a)
-  );
+  const traderKeys = traderName === "all"
+    ? Object.keys(byTrader).sort((a, b) => byTrader[b].pl - byTrader[a].pl)
+    : [traderName];
+
+  // For pie chart we need by-date stats (profitable/loss/breakeven days)
+  const byDate = {};
+  filteredTrades.forEach((t) => {
+    const d = t.date;
+    if (!byDate[d]) byDate[d] = { pl: 0 };
+    byDate[d].pl += Number(t.pl) || 0;
+  });
+  const dateKeys = Object.keys(byDate);
 
   tbody.innerHTML = "";
 
   let totalPl = 0;
-  let activeDays = 0;
+  let totalTradesCount = 0;
 
-  dateKeys.forEach((d) => {
-    const info = byDate[d];
+  traderKeys.forEach((name) => {
+    const info = byTrader[name];
+    if (!info) return;
     totalPl += info.pl;
-    activeDays += 1;
+    totalTradesCount += info.count;
 
     const tr = document.createElement("tr");
     const status =
-      info.pl > 0
-        ? "Profitable"
-        : info.pl < 0
-        ? "Loss"
-        : "Break-even";
-
+      info.pl > 0 ? "Profitable" : info.pl < 0 ? "Loss" : "Break-even";
     const highRisk = info.maxRiskPct > 2;
 
     tr.innerHTML = `
-      <td>${escapeHTML(d)}</td>
+      <td>${escapeHTML(name)}</td>
       <td class="${info.pl > 0 ? "performance-profit" : info.pl < 0 ? "performance-loss" : ""}">${formatCurrency(info.pl)}</td>
       <td>${status}</td>
       <td>${info.count}</td>
-      <td class="${highRisk ? "performance-high-risk" : ""}">${
-      info.maxRiskPct ? info.maxRiskPct.toFixed(2) + "%" : "-"
-    }</td>
-      <td class="performance-reward">${formatCurrency(
-        info.pl > 0 ? info.pl : 0
-      )}</td>
+      <td class="${highRisk ? "performance-high-risk" : ""}">${info.maxRiskPct ? info.maxRiskPct.toFixed(2) + "%" : "-"}</td>
+      <td class="performance-reward">${formatCurrency(info.pl > 0 ? info.pl : 0)}</td>
     `;
-
     tbody.appendChild(tr);
   });
 
-  if (dateKeys.length === 0) {
+  if (traderKeys.length === 0) {
     const tr = document.createElement("tr");
     tr.className = "performance-inactive-row";
     tr.innerHTML =
-      '<td colspan="6" style="text-align:center;font-size:12px;">No trades yet for this trader.</td>';
+      '<td colspan="6" style="text-align:center;font-size:12px;">No trades yet for this selection.</td>';
     tbody.appendChild(tr);
   }
 
-  // Summary: use innerHTML so we can style label vs value (bold/value color)
   const traderLabel = traderName === "all" ? "all traders" : traderName;
   summaryPl.innerHTML =
-    'Total P/L: <span class="perf-summary-value">' + formatCurrency(totalPl) + " for " + escapeHTML(traderLabel) + "</span>";
+    "Total P/L: <strong class=\"perf-summary-value\">" + formatCurrency(totalPl) + " for " + escapeHTML(traderLabel) + "</strong>";
   summaryDays.innerHTML =
-    'Active days with trades: <span class="perf-summary-value">' + activeDays + "</span>";
+    "Active days with trades: <strong class=\"perf-summary-value\">" + dateKeys.length + "</strong>";
   summaryActive.innerHTML =
-    'Trade count: <span class="perf-summary-value">' + userTrades.length + " total trades</span>";
+    "Trade count: <strong class=\"perf-summary-value\">" + totalTradesCount + " total trades</strong>";
 
-  // Donut chart: profitable vs loss vs breakeven days
+  // Pie chart: profitable vs loss vs breakeven days (based on filtered trades)
   if (chartSvg && chartTooltip) {
     const bgCircle = chartSvg.querySelector(".performance-chart-bg");
     const oldSlices = chartSvg.querySelectorAll("path[data-segment]");
@@ -1787,8 +1787,7 @@ function exportPerformanceCsv(traderName) {
   const fromDate = getActiveDate(fromEl);
   const toDate = getActiveDate(toEl);
 
-  const byDate = {};
-  const userTrades = trades
+  const filteredTrades = trades
     .filter((t) => (traderName === "all" ? true : t.trader === traderName) && t.date)
     .filter((t) => {
       const d = new Date(t.date);
@@ -1801,36 +1800,37 @@ function exportPerformanceCsv(traderName) {
       return true;
     });
 
-  userTrades.forEach((t) => {
-    const d = t.date;
-    if (!byDate[d]) {
-      byDate[d] = { pl: 0, count: 0, maxRiskPct: 0 };
-    }
+  const byTrader = {};
+  filteredTrades.forEach((t) => {
+    const name = t.trader || "Unknown";
+    if (!byTrader[name]) byTrader[name] = { pl: 0, count: 0, maxRiskPct: 0 };
     const priceRiskPct =
       t.entry && t.sl ? (Math.abs(t.entry - t.sl) / Math.abs(t.entry)) * 100 : 0;
-    byDate[d].pl += Number(t.pl) || 0;
-    byDate[d].count += 1;
-    byDate[d].maxRiskPct = Math.max(byDate[d].maxRiskPct, priceRiskPct);
+    byTrader[name].pl += Number(t.pl) || 0;
+    byTrader[name].count += 1;
+    byTrader[name].maxRiskPct = Math.max(byTrader[name].maxRiskPct, priceRiskPct);
   });
 
-  const dateKeys = Object.keys(byDate).sort(
-    (a, b) => new Date(a) - new Date(b)
-  );
+  const traderKeys = traderName === "all"
+    ? Object.keys(byTrader).sort((a, b) => byTrader[b].pl - byTrader[a].pl)
+    : [traderName];
 
   const rows = [
-    ["Date", "TotalPL", "Status", "Trades", "MaxRiskPercent"],
+    ["Trader", "TotalPL", "Status", "Trades", "MaxRiskPercent", "Reward"],
   ];
 
-  dateKeys.forEach((d) => {
-    const info = byDate[d];
+  traderKeys.forEach((name) => {
+    const info = byTrader[name];
+    if (!info) return;
     const status =
       info.pl > 0 ? "Profitable" : info.pl < 0 ? "Loss" : "Break-even";
     rows.push([
-      d,
+      name,
       info.pl.toFixed(2),
       status,
       String(info.count),
       info.maxRiskPct ? info.maxRiskPct.toFixed(2) : "0.00",
+      info.pl > 0 ? info.pl.toFixed(2) : "0.00",
     ]);
   });
 

@@ -330,6 +330,22 @@ body {
   font-weight: 600;
 }
 
+.stat-pl-profit {
+  color: var(--success);
+}
+
+.stat-pl-loss {
+  color: var(--danger);
+}
+
+.stat-rr-meta {
+  font-size: 0.75em;
+  font-weight: 400;
+  color: var(--text-muted);
+  display: block;
+  margin-top: 2px;
+}
+
 /* Recent trades table on dashboard */
 
 .recent-trades-card {
@@ -588,15 +604,23 @@ textarea {
   margin-top: 16px;
 }
 
-/* Topics card: clear gap between heading and search */
-.card-header:has(#topic-search) h2 {
-  margin-bottom: 14px;
+/* Topics card: horizontal layout - heading and search in one row with gap */
+.topic-list-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.topic-list-header h2 {
+  margin: 0;
 }
 
 #topic-search {
-  margin-top: 20px;
-  width: 100%;
-  display: block;
+  flex: 1;
+  min-width: 140px;
+  margin: 0;
 }
 
 .topic-list {
@@ -854,20 +878,21 @@ textarea {
   display: block;
 }
 
-/* Centered, beautiful modal arrows */
+/* Modal arrows: fixed to viewport so they stay in same position for any image size */
 #image-modal-prev,
 #image-modal-next {
-  position: absolute;
+  position: fixed;
   top: 50%;
   transform: translateY(-50%);
   width: 52px;
   height: 52px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(7, 10, 24, 0.7);
+  background: rgba(7, 10, 24, 0.85);
   color: var(--text-main);
   font-size: 18px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  z-index: 1002;
 }
 
 #image-modal-prev:hover,
@@ -877,19 +902,21 @@ textarea {
 }
 
 #image-modal-prev {
-  left: -70px;
+  left: 24px;
+  position: fixed;
 }
 
 #image-modal-next {
-  right: -70px;
+  right: 24px;
+  position: fixed;
 }
 
 @media (max-width: 600px) {
   #image-modal-prev {
-    left: 10px;
+    left: 12px;
   }
   #image-modal-next {
-    right: 10px;
+    right: 12px;
   }
 }
 
@@ -943,6 +970,10 @@ textarea {
 .performance-summary .perf-summary-value {
   font-weight: 700;
   color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
 }
 
 .performance-note {
