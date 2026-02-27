@@ -16,7 +16,6 @@ const STORE_PATH = path.join(__dirname, "store.json");
 const TRADERS = [
   "Dr. Adnan",
   "Muhammad Usman",
-  "Mohammad Ismail",
   "Amna",
   "Alia",
   "Aisha",
@@ -24,7 +23,6 @@ const TRADERS = [
 const ADMIN_TRADERS = new Set([
   "Dr. Adnan",
   "Muhammad Usman",
-  "Mohammad Ismail",
 ]);
 
 app.use(express.json({ limit: "12mb" }));
@@ -120,11 +118,18 @@ function sanitizeTrade(t) {
     notes,
     mistakes,
     rr,
+    screenshots,
     screenshot,
     createdAt,
     updatedAt,
     createdBy,
   } = t || {};
+
+  const normalizedScreenshots = Array.isArray(screenshots)
+    ? screenshots
+    : screenshot
+      ? [screenshot]
+      : [];
   return {
     id,
     trader,
@@ -139,7 +144,7 @@ function sanitizeTrade(t) {
     notes,
     mistakes,
     rr,
-    screenshot,
+    screenshots: normalizedScreenshots,
     createdAt,
     updatedAt,
     createdBy,

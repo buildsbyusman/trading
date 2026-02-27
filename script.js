@@ -23,13 +23,12 @@ let editingTopicId = null;
 const TRADERS = [
   "Dr. Adnan",
   "Muhammad Usman",
-  "Mohammad Ismail",
   "Amna",
   "Alia",
   "Aisha",
 ];
 
-const ADMIN_TRADERS = new Set(["Dr. Adnan", "Muhammad Usman", "Mohammad Ismail"]);
+const ADMIN_TRADERS = new Set(["Dr. Adnan", "Muhammad Usman"]);
 
 let authToken = null;
 let currentUser = null;
@@ -96,6 +95,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupAuth();
   setupMobileMenu();
   setupNavigation();
+  setupDashboardFilters();
   setupTradeForm();
   setupTopicForm();
   setupRiskCalculator();
@@ -239,6 +239,14 @@ function applyRoleUI() {
       perfSelect.disabled = true;
     }
   }
+}
+
+function setupDashboardFilters() {
+  const dashFilter = document.getElementById("dashboard-trader-filter");
+  if (!dashFilter) return;
+  dashFilter.addEventListener("change", () => {
+    renderDashboard();
+  });
 }
 
 function setupMobileMenu() {
@@ -468,6 +476,43 @@ function renderDashboard() {
 function setupTradeForm() {
   const form = document.getElementById("trade-form");
   const cancelBtn = document.getElementById("cancel-edit-btn");
+  const dateInput = document.getElementById("date");
+  const screenshotInput = document.getElementById("screenshot");
+
+  function todayISO() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function setDefaultDateIfEmpty() {
+    if (dateInput && !dateInput.value) {
+      dateInput.value = todayISO();
+    }
+  }
+
+  // Default current date
+  setDefaultDateIfEmpty();
+
+  // Best-effort calendar open on click (where supported)
+  if (dateInput) {
+    dateInput.addEventListener("click", () => {
+      if (typeof dateInput.showPicker === "function") {
+        try {
+          dateInput.showPicker();
+        } catch {
+          // ignore
+        }
+      }
+    });
+    dateInput.addEventListener("focus", () => {
+      if (typeof dateInput.showPicker === "function") {
+        try {
+          dateInput.showPicker();
+        } catch {
+          // ignore
+        }
+      }
+    });
+  }
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -488,17 +533,33 @@ function setupTradeForm() {
     const pl = parseFloat(document.getElementById("pl").value);
     const notes = document.getElementById("notes").value.trim();
     const mistakes = document.getElementById("mistakes").value.trim();
-    const screenshotInput = document.getElementById("screenshot");
 
     // Calculate R:R = |TP - Entry| / |Entry - SL|
     const riskPerUnit = Math.abs(entry - sl) || 1;
     const rewardPerUnit = Math.abs(tp - entry);
     const rr = rewardPerUnit / riskPerUnit;
 
-    // Handle screenshot (optional)
-    let screenshotDataUrl = null;
-    if (screenshotInput.files && screenshotInput.files[0]) {
-      screenshotDataUrl = await fileToDataUrl(screenshotInput.files[0]);
+    // Handle screenshots (optional, multiple)
+    const screenshots = [];
+    if (screenshotInput && screenshotInput.files && screenshotInput.files.length > 0) {
+      for (const file of screenshotInput.files) {
+        const url = await fileToDataUrl(file);
+        if (url) screenshots.push(url);
+      }
+    }
+
+    // If editing and user didn't pick new images, keep existing images
+    let screenshotsFinal = screenshots;
+    if (editingTradeId && screenshots.length === 0) {
+      const existing = trades.find((t) => t.id === editingTradeId);
+      const existingShots = existing
+        ? Array.isArray(existing.screenshots)
+          ? existing.screenshots
+          : existing.screenshot
+            ? [existing.screenshot]
+            : []
+        : [];
+      screenshotsFinal = existingShots;
     }
 
     const baseTrade = {
@@ -514,7 +575,7 @@ function setupTradeForm() {
       notes,
       mistakes,
       rr,
-      screenshot: screenshotDataUrl,
+      screenshots: screenshotsFinal,
     };
 
     try {
@@ -541,6 +602,7 @@ function setupTradeForm() {
     editingTradeId = null;
     document.getElementById("trade-form-title").textContent = "Add Trade";
     cancelBtn.style.display = "none";
+    setDefaultDateIfEmpty();
 
     // Re-render
     renderDashboard();
@@ -553,6 +615,7 @@ function setupTradeForm() {
     editingTradeId = null;
     document.getElementById("trade-form-title").textContent = "Add Trade";
     cancelBtn.style.display = "none";
+    setDefaultDateIfEmpty();
   });
 }
 
@@ -574,11 +637,33 @@ function renderTradesTable() {
   const filterSelect = document.getElementById("trade-filter-trader");
   const traderFilter = filterSelect ? filterSelect.value : "all";
 
+  const fromEl = document.getElementById("trade-filter-date-from");
+  const toEl = document.getElementById("trade-filter-date-to");
+  const fromDate = fromEl && fromEl.value ? new Date(fromEl.value) : null;
+  const toDate = toEl && toEl.value ? new Date(toEl.value) : null;
+
   // Sort by date (newest first)
   let filtered = [...trades];
 
   if (traderFilter !== "all") {
     filtered = filtered.filter((t) => t.trader === traderFilter);
+  }
+
+  if (fromDate) {
+    filtered = filtered.filter((t) => {
+      if (!t.date) return false;
+      return new Date(t.date) >= fromDate;
+    });
+  }
+  if (toDate) {
+    filtered = filtered.filter((t) => {
+      if (!t.date) return false;
+      const d = new Date(t.date);
+      // Include the full 'to' day
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999);
+      return d <= end;
+    });
   }
 
   const sorted = filtered.sort((a, b) => {
@@ -632,7 +717,7 @@ function renderTradesTable() {
 
   if (sorted.length === 0) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="6" style="text-align:center;color:#858cb0;font-size:12px;">No trades yet. Add your first trade on the left.</td>`;
+    tr.innerHTML = `<td colspan="7" style="text-align:center;color:#858cb0;font-size:12px;">No trades yet. Add your first trade on the left.</td>`;
     tbody.appendChild(tr);
   }
 }
@@ -733,12 +818,26 @@ function renderTradeDetail(id) {
     </div>
   `;
 
-  if (trade.screenshot) {
-    const img = document.createElement("img");
-    img.src = trade.screenshot;
-    img.alt = "Trade screenshot";
-    img.className = "trade-detail-img";
-    wrapper.appendChild(img);
+  const screenshots = Array.isArray(trade.screenshots)
+    ? trade.screenshots
+    : trade.screenshot
+      ? [trade.screenshot]
+      : [];
+
+  if (screenshots.length > 0) {
+    const imagesWrap = document.createElement("div");
+    imagesWrap.className = "trade-detail-images";
+
+    screenshots.forEach((src, idx) => {
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = `Trade screenshot ${idx + 1}`;
+      img.className = "trade-detail-img";
+      img.addEventListener("click", () => openImageCarousel(screenshots, idx));
+      imagesWrap.appendChild(img);
+    });
+
+    wrapper.appendChild(imagesWrap);
   }
 
   container.appendChild(wrapper);
@@ -915,6 +1014,7 @@ function renderTopicDetail(id) {
     let currentIndex = 0;
 
     const imgWrapper = document.createElement("div");
+    imgWrapper.className = "media-carousel";
     const img = document.createElement("img");
     img.src = topic.images[0];
     img.alt = "Topic image";
@@ -924,11 +1024,15 @@ function renderTopicDetail(id) {
     );
 
     const prevBtn = document.createElement("button");
-    prevBtn.className = "btn small secondary";
-    prevBtn.textContent = "<";
+    prevBtn.className = "media-carousel-nav prev";
+    prevBtn.type = "button";
+    prevBtn.setAttribute("aria-label", "Previous image");
+    prevBtn.innerHTML = "‹";
     const nextBtn = document.createElement("button");
-    nextBtn.className = "btn small secondary";
-    nextBtn.textContent = ">";
+    nextBtn.className = "media-carousel-nav next";
+    nextBtn.type = "button";
+    nextBtn.setAttribute("aria-label", "Next image");
+    nextBtn.innerHTML = "›";
 
     prevBtn.addEventListener("click", () => {
       if (!topic.images.length) return;
@@ -942,8 +1046,8 @@ function renderTopicDetail(id) {
       img.src = topic.images[currentIndex];
     });
 
-    imgWrapper.appendChild(prevBtn);
     imgWrapper.appendChild(img);
+    imgWrapper.appendChild(prevBtn);
     imgWrapper.appendChild(nextBtn);
     wrapper.appendChild(imgWrapper);
   }
@@ -1063,6 +1167,7 @@ function setupRiskCalculator() {
     const customRiskPct = parseFloat(
       document.getElementById("risk-percent").value
     );
+    const rrRaw = String(document.getElementById("rr-ratio")?.value || "").trim();
 
     let lotSize =
       lotSelect === "custom"
@@ -1081,10 +1186,30 @@ function setupRiskCalculator() {
     }
 
     // Pip value from lot size (0.01→$0.1, 0.10→$1, 1.00→$10)
-    const pipValue = lotSize * 10; // USD per pip
+    // According to your rule: 1 price unit = 10 pips. (so 1 pip = 0.1 price unit)
+    // So USD per pip is linear with lots: $10 per pip at 1.00 lot.
+    const pipValue = lotSize * 10; // USD per pip (supports up to 100 lots accurately)
     if (pipValueEl) {
       pipValueEl.textContent = `$${pipValue.toFixed(2)} / pip`;
     }
+
+    function parseRR(text) {
+      if (!text) return { risk: 1, reward: 2 };
+      const m = text.replace(/\s+/g, "").match(/^(\d*\.?\d+):(\d*\.?\d+)$/);
+      if (!m) return null;
+      const risk = Number(m[1]);
+      const reward = Number(m[2]);
+      if (!isFinite(risk) || !isFinite(reward) || risk <= 0 || reward <= 0) return null;
+      return { risk, reward };
+    }
+
+    const rr = parseRR(rrRaw);
+    if (!rr) {
+      warningEl.textContent =
+        'Invalid R:R format. Use like "1:2", "1:3", or "3:4".';
+      return;
+    }
+    const rewardMultiplier = rr.reward / rr.risk;
 
     // Helper for SL/TP based on risk %
     function levelsForRisk(riskPct) {
@@ -1095,7 +1220,9 @@ function setupRiskCalculator() {
       const slPrice =
         side === "buy" ? entry - priceMove : entry + priceMove;
       const tpPrice =
-        side === "buy" ? entry + 2 * priceMove : entry - 2 * priceMove;
+        side === "buy"
+          ? entry + rewardMultiplier * priceMove
+          : entry - rewardMultiplier * priceMove;
       return { riskAmount, slPrice, tpPrice, pips, riskPct };
     }
 
@@ -1111,7 +1238,7 @@ function setupRiskCalculator() {
     const lvlLiq = levelsForRisk(100);
 
     function fmtPrice(p) {
-      return isFinite(p) ? p.toFixed(5) : "-";
+      return isFinite(p) ? p.toFixed(2) : "-";
     }
 
     if (lvl1) {
@@ -1140,17 +1267,21 @@ function setupRiskCalculator() {
       slCustomEl.textContent =
         "SL @ " +
         effectiveRiskPct.toFixed(2) +
-        "%: " +
+        "% (R:R " +
+        rr.risk +
+        ":" +
+        rr.reward +
+        "): " +
         fmtPrice(lvlCustom.slPrice) +
         " (risk " +
         formatCurrency(lvlCustom.riskAmount) +
         ")";
       tpPriceEl.textContent =
-        "Take Profit (2R): " + fmtPrice(lvlCustom.tpPrice);
+        "Take Profit: " + fmtPrice(lvlCustom.tpPrice);
 
       riskAmountEl.textContent = formatCurrency(lvlCustom.riskAmount);
       rewardAmountEl.textContent = formatCurrency(
-        lvlCustom.riskAmount * 2
+        lvlCustom.riskAmount * rewardMultiplier
       );
     } else {
       slCustomEl.textContent = "SL @ custom %: -";
@@ -1172,13 +1303,17 @@ function setupRiskCalculator() {
       warningEl.textContent =
         "Warning: you are risking " +
         effectiveRiskPct.toFixed(2) +
-        "% of your account. Only 1–2% is recommended.";
+        "% (" +
+        formatCurrency(lvlCustom ? lvlCustom.riskAmount : 0) +
+        ") of your account. Only 1–2% is recommended.";
       warningEl.classList.add("high");
     } else {
       warningEl.textContent =
         "You are risking " +
         effectiveRiskPct.toFixed(2) +
-        "% of your account. This is within the 1–2% safe zone.";
+        "% (" +
+        formatCurrency(lvlCustom ? lvlCustom.riskAmount : 0) +
+        ") of your account. This is within the 1–2% safe zone.";
       warningEl.classList.add("safe");
     }
   });
@@ -1310,6 +1445,11 @@ function setupPerformance() {
     renderPerformance();
   });
 
+  const fromEl = document.getElementById("performance-date-from");
+  const toEl = document.getElementById("performance-date-to");
+  if (fromEl) fromEl.addEventListener("change", renderPerformance);
+  if (toEl) toEl.addEventListener("change", renderPerformance);
+
   if (exportBtn) {
     exportBtn.addEventListener("click", () => {
       const traderName = select.value;
@@ -1324,16 +1464,31 @@ function renderPerformance() {
   const summaryPl = document.getElementById("perf-summary-pl");
   const summaryDays = document.getElementById("perf-summary-days");
   const summaryActive = document.getElementById("perf-summary-active");
+  const fromEl = document.getElementById("performance-date-from");
+  const toEl = document.getElementById("performance-date-to");
 
   if (!select || !tbody || !summaryPl || !summaryDays || !summaryActive) {
     return;
   }
 
   const traderName = select.value;
+  const fromDate = fromEl && fromEl.value ? new Date(fromEl.value) : null;
+  const toDate = toEl && toEl.value ? new Date(toEl.value) : null;
 
   // Group trades by date for this trader
   const byDate = {};
-  const userTrades = trades.filter((t) => t.trader === traderName && t.date);
+  const userTrades = trades
+    .filter((t) => t.trader === traderName && t.date)
+    .filter((t) => {
+      const d = new Date(t.date);
+      if (fromDate && d < fromDate) return false;
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+        if (d > end) return false;
+      }
+      return true;
+    });
 
   userTrades.forEach((t) => {
     const d = t.date;
@@ -1403,8 +1558,24 @@ function renderPerformance() {
 function exportPerformanceCsv(traderName) {
   if (!traderName) return;
 
+  const fromEl = document.getElementById("performance-date-from");
+  const toEl = document.getElementById("performance-date-to");
+  const fromDate = fromEl && fromEl.value ? new Date(fromEl.value) : null;
+  const toDate = toEl && toEl.value ? new Date(toEl.value) : null;
+
   const byDate = {};
-  const userTrades = trades.filter((t) => t.trader === traderName && t.date);
+  const userTrades = trades
+    .filter((t) => t.trader === traderName && t.date)
+    .filter((t) => {
+      const d = new Date(t.date);
+      if (fromDate && d < fromDate) return false;
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+        if (d > end) return false;
+      }
+      return true;
+    });
 
   userTrades.forEach((t) => {
     const d = t.date;
@@ -1460,11 +1631,26 @@ function exportPerformanceCsv(traderName) {
 
 function setupTradeFilters() {
   const filterSelect = document.getElementById("trade-filter-trader");
-  if (!filterSelect) return;
-  filterSelect.addEventListener("change", () => {
-    renderTradesTable();
-    renderTradeDetail(null);
-  });
+  const fromEl = document.getElementById("trade-filter-date-from");
+  const toEl = document.getElementById("trade-filter-date-to");
+  if (filterSelect) {
+    filterSelect.addEventListener("change", () => {
+      renderTradesTable();
+      renderTradeDetail(null);
+    });
+  }
+  if (fromEl) {
+    fromEl.addEventListener("change", () => {
+      renderTradesTable();
+      renderTradeDetail(null);
+    });
+  }
+  if (toEl) {
+    toEl.addEventListener("change", () => {
+      renderTradesTable();
+      renderTradeDetail(null);
+    });
+  }
 }
 
 function setupTopicFilters() {

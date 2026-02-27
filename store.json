@@ -1,0 +1,29 @@
+{
+  "trades": [
+    {
+      "id": "t_1772215085295_48dce297",
+      "trader": "Amna",
+      "pair": "EURUSD",
+      "date": "2026-02-27",
+      "entry": 1.23,
+      "sl": 1.13,
+      "tp": 1.43,
+      "lotSize": 0.03,
+      "result": "win",
+      "pl": 12.34,
+      "notes": "n",
+      "mistakes": "m",
+      "rr": 2,
+      "screenshots": [
+        "data:image/png;base64,AAA",
+        "data:image/png;base64,BBB"
+      ],
+      "createdBy": "785a8735-90ba-4a0d-81e3-f9b2086f19b9",
+      "createdAt": "2026-02-27T17:58:05.295Z",
+      "updatedAt": "2026-02-27T17:58:05.295Z"
+    }
+  ],
+  "topics": [],
+  "dailyTargets": {},
+  "updatedAt": "2026-02-27T17:58:05.295Z"
+}
