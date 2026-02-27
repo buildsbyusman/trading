@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>TradeVault - Muhammad Usman</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Auth Screen -->
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="logo">
+          <span class="logo-main">TradeVault</span>
+          <span class="logo-sub">Sign in to continue</span>
+        </div>
+      </div>
+
+      <div class="auth-grid">
+        <form id="login-form" class="auth-form card">
+          <div class="card-header">
+            <h2>Login</h2>
+          </div>
+          <div class="form-group">
+            <label for="login-email">Email</label>
+            <input id="login-email" type="email" autocomplete="email" required />
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <input id="login-password" type="password" autocomplete="current-password" required />
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn primary">Login</button>
+          </div>
+          <p id="login-error" class="auth-error" style="display:none;"></p>
+          <p class="auth-switch">
+            <button type="button" id="show-signup-btn" class="link-button">Don't have an account? Sign up</button>
+          </p>
+        </form>
+
+        <form id="signup-form" class="auth-form card" style="display:none;">
+          <div class="card-header">
+            <h2>Sign up</h2>
+          </div>
+          <div class="form-group">
+            <label for="signup-trader">Trader</label>
+            <select id="signup-trader" required>
+              <option value="">Select trader</option>
+              <option value="Dr. Adnan">Dr. Adnan</option>
+              <option value="Muhammad Usman">Muhammad Usman</option>
+              <option value="Amna">Amna</option>
+              <option value="Alia">Alia</option>
+              <option value="Aisha">Aisha</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="signup-email">Email</label>
+            <input id="signup-email" type="email" autocomplete="email" required />
+          </div>
+          <div class="form-group">
+            <label for="signup-password">Password</label>
+            <input id="signup-password" type="password" autocomplete="new-password" required minlength="6" />
+            <small>Password must be at least 6 characters.</small>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn secondary">Create account</button>
+          </div>
+          <p id="signup-error" class="auth-error" style="display:none;"></p>
+          <p class="auth-switch">
+            <button type="button" id="show-login-btn" class="link-button">Already have an account? Login</button>
+          </p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="app" class="app-container" style="display:none;">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="logo">
+        <span class="logo-main">TradeVault</span>
+        <span class="logo-sub" id="user-badge" style="display:none;"></span>
+      </div>
+      <nav class="nav">
+        <button class="nav-link active" data-section="dashboard-section">🏠 Dashboard</button>
+        <button class="nav-link" data-section="journal-section">📝 Trade Journal</button>
+        <button class="nav-link" data-section="performance-section">📈 Performance</button>
+        <button class="nav-link" data-section="strategy-section">📚 Strategy Library</button>
+        <button class="nav-link" data-section="calculator-section">🧮 Risk Calculator</button>
+        <button class="nav-link" data-section="backup-section">💾 Backup & Settings</button>
+      </nav>
+      <div class="sidebar-footer">
+        <p>Powered by Dr. Adnan</p>
+        <button class="btn small secondary" id="logout-btn" style="margin-top:10px;width:100%;">Logout</button>
+      </div>
+    </aside>
+    <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Mobile topbar -->
+      <div class="mobile-topbar">
+        <button class="btn small secondary" id="mobile-menu-btn" aria-label="Open menu">☰</button>
+        <div class="mobile-topbar-title">
+          <span id="mobile-user-label"></span>
+        </div>
+        <button class="btn small secondary" id="mobile-logout-btn">Logout</button>
+      </div>
+
+      <!-- DASHBOARD -->
+      <section id="dashboard-section" class="section visible">
+        <header class="section-header dashboard-header">
+          <div>
+            <h1>Dashboard</h1>
+            <p>Your trading reality screen.</p>
+          </div>
+          <div class="dashboard-controls">
+            <label for="dashboard-trader-filter">View stats for:</label>
+            <select id="dashboard-trader-filter">
+              <option value="all">All traders</option>
+              <option value="Dr. Adnan">Dr. Adnan</option>
+              <option value="Muhammad Usman">Muhammad Usman</option>
+              <option value="Amna">Amna</option>
+              <option value="Alia">Alia</option>
+              <option value="Aisha">Aisha</option>
+            </select>
+          </div>
+        </header>
+
+        <div class="cards-grid">
+          <div class="card stat-card">
+            <h3>Total Trades</h3>
+            <p class="stat-value" id="stat-total-trades">0</p>
+          </div>
+          <div class="card stat-card">
+            <h3>Win Rate</h3>
+            <p class="stat-value" id="stat-win-rate">0%</p>
+          </div>
+          <div class="card stat-card">
+            <h3>Total P/L</h3>
+            <p class="stat-value" id="stat-total-pl">$0.00</p>
+          </div>
+          <div class="card stat-card">
+            <h3>Average R:R</h3>
+            <p class="stat-value" id="stat-avg-rr">0.00</p>
+          </div>
+        </div>
+
+        <div class="card recent-trades-card">
+          <div class="card-header">
+            <h2>Recent 50 Trades</h2>
+            <div class="history-filters">
+              <div class="form-group">
+                <label for="dashboard-date-exact">Specific date</label>
+                <input type="date" id="dashboard-date-exact" />
+              </div>
+              <div class="form-group">
+                <label for="dashboard-date-from">From date</label>
+                <input type="date" id="dashboard-date-from" />
+              </div>
+              <div class="form-group">
+                <label for="dashboard-date-to">To date</label>
+                <input type="date" id="dashboard-date-to" />
+              </div>
+            </div>
+          </div>
+          <div class="table-wrapper small">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Trader</th>
+                  <th>Pair</th>
+                  <th>Result</th>
+                  <th>P/L</th>
+                  <th>R:R</th>
+                </tr>
+              </thead>
+              <tbody id="dashboard-recent-trades">
+                <!-- Filled by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- TRADE JOURNAL -->
+      <section id="journal-section" class="section">
+        <header class="section-header">
+          <h1>Trade Journal</h1>
+          <p>Your performance engine.</p>
+        </header>
+
+        <div class="journal-layout">
+          <!-- Add / Edit Trade Form -->
+          <div class="card form-card">
+            <div class="card-header">
+              <h2 id="trade-form-title">Add Trade</h2>
+            </div>
+            <form id="trade-form">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="trade-trader">Trader</label>
+                  <select id="trade-trader" required>
+                    <option value="">Select trader</option>
+                    <option value="Dr. Adnan">Dr. Adnan</option>
+                    <option value="Muhammad Usman">Muhammad Usman</option>
+                    <option value="Amna">Amna</option>
+                    <option value="Alia">Alia</option>
+                    <option value="Aisha">Aisha</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="pair">Currency Pair</label>
+                  <input type="text" id="pair" required placeholder="e.g. EURUSD" />
+                </div>
+                <div class="form-group">
+                  <label for="date">Date</label>
+                  <input type="date" id="date" required />
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="entry">Entry Price</label>
+                  <input type="number" step="0.00001" id="entry" required />
+                </div>
+                <div class="form-group">
+                  <label for="sl">Stop Loss</label>
+                  <input type="number" step="0.00001" id="sl" required />
+                </div>
+                <div class="form-group">
+                  <label for="tp">Take Profit</label>
+                  <input type="number" step="0.00001" id="tp" required />
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="lot-size">Lot Size</label>
+                  <input type="number" step="0.01" id="lot-size" required />
+                </div>
+                <div class="form-group">
+                  <label for="result">Result</label>
+                  <select id="result" required>
+                    <option value="win">Win</option>
+                    <option value="loss">Loss</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="pl">Profit / Loss ($)</label>
+                  <input type="number" step="0.01" id="pl" required />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="notes">Notes</label>
+                <textarea id="notes" rows="2" placeholder="What happened in this trade?"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label for="mistakes">Mistakes</label>
+                <textarea id="mistakes" rows="2" placeholder="What would you improve next time?"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label for="screenshot">Screenshots (optional)</label>
+                <input type="file" id="screenshot" accept="image/*" multiple />
+                <small>Images are stored locally in your browser using data URLs.</small>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn primary" id="save-trade-btn">Save Trade</button>
+                <button type="button" class="btn secondary" id="cancel-edit-btn" style="display:none;">Cancel Edit</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card detail-card">
+            <div class="card-header">
+              <h2>Trade Detail</h2>
+            </div>
+            <div id="trade-detail">
+              <p>Select a trade to view details.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trade History moved below for more space -->
+        <div class="card history-card">
+          <div class="card-header">
+            <h2>Trade History</h2>
+            <div class="history-filters">
+              <div class="form-group">
+                <label for="trade-filter-trader">Filter by trader</label>
+                <select id="trade-filter-trader">
+                  <option value="all">All traders</option>
+                  <option value="Dr. Adnan">Dr. Adnan</option>
+                  <option value="Muhammad Usman">Muhammad Usman</option>
+                  <option value="Amna">Amna</option>
+                  <option value="Alia">Alia</option>
+                  <option value="Aisha">Aisha</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="trade-filter-date-from">From date</label>
+                <input type="date" id="trade-filter-date-from" />
+              </div>
+              <div class="form-group">
+                <label for="trade-filter-date-to">To date</label>
+                <input type="date" id="trade-filter-date-to" />
+              </div>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Trader</th>
+                  <th>Pair</th>
+                  <th>Result</th>
+                  <th>P/L</th>
+                  <th>R:R</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="trades-table-body">
+                <!-- Filled by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- PERFORMANCE -->
+      <section id="performance-section" class="section">
+        <header class="section-header">
+          <h1>Performance</h1>
+          <p>Per-user daily profitability, risk, and activity.</p>
+        </header>
+
+        <div class="card performance-card">
+          <div class="performance-controls">
+            <div class="form-group">
+              <label for="performance-trader-select">Select trader</label>
+              <select id="performance-trader-select">
+                <option value="all">All traders</option>
+                <option value="Dr. Adnan">Dr. Adnan</option>
+                <option value="Muhammad Usman">Muhammad Usman</option>
+                <option value="Amna">Amna</option>
+                <option value="Alia">Alia</option>
+                <option value="Aisha">Aisha</option>
+              </select>
+            </div>
+            <div class="performance-date-filters">
+              <div class="form-group">
+                <label for="performance-date-from">From date</label>
+                <input type="date" id="performance-date-from" />
+              </div>
+              <div class="form-group">
+                <label for="performance-date-to">To date</label>
+                <input type="date" id="performance-date-to" />
+              </div>
+            </div>
+            <div class="performance-summary">
+              <span id="perf-summary-pl"></span>
+              <span id="perf-summary-days"></span>
+              <span id="perf-summary-active"></span>
+            </div>
+            <div>
+              <button class="btn small secondary" id="perf-export-btn">Export CSV</button>
+            </div>
+          </div>
+          <p class="performance-note">Daily target is fixed at 10% (reference basis) for all traders.</p>
+          <div class="table-wrapper small">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Total P/L</th>
+                  <th>Status</th>
+                  <th>Trades</th>
+                  <th>Max Risk %</th>
+                  <th>Reward ($)</th>
+                </tr>
+              </thead>
+              <tbody id="performance-body">
+              </tbody>
+            </table>
+          </div>
+          <div id="performance-chart-container" class="performance-chart-container">
+            <div class="performance-chart-header">Performance snapshot</div>
+            <svg id="performance-chart" viewBox="0 0 120 120" role="img" aria-label="Performance donut chart">
+              <!-- Slices drawn by JS -->
+              <circle cx="60" cy="60" r="40" class="performance-chart-bg"></circle>
+            </svg>
+            <div class="performance-chart-legend">
+              <button type="button" data-segment="profitable">Profitable days</button>
+              <button type="button" data-segment="loss">Losing days</button>
+              <button type="button" data-segment="breakeven">Break-even days</button>
+            </div>
+            <div id="performance-chart-tooltip" class="performance-chart-tooltip">
+              Hover over legend to see breakdown.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STRATEGY LIBRARY -->
+      <section id="strategy-section" class="section">
+        <header class="section-header">
+          <h1>Strategy / Topics Library</h1>
+          <p>Your structured trading brain.</p>
+        </header>
+
+        <div class="strategy-layout">
+          <!-- Topic List -->
+          <div class="card">
+            <div class="card-header">
+              <h2>Topics</h2>
+              <input type="text" id="topic-search" placeholder="Search by title..." />
+            </div>
+            <ul id="topic-list" class="topic-list">
+              <!-- Filled by JS -->
+            </ul>
+          </div>
+
+          <!-- Add Topic -->
+          <div class="card form-card">
+            <div class="card-header">
+              <h2 id="topic-form-title">Add Topic</h2>
+            </div>
+            <form id="topic-form">
+              <div class="form-group">
+                <label for="topic-trader">Trader</label>
+                <select id="topic-trader" required>
+                  <option value="">Select trader</option>
+                  <option value="Dr. Adnan">Dr. Adnan</option>
+                  <option value="Muhammad Usman">Muhammad Usman</option>
+                  <option value="Amna">Amna</option>
+                  <option value="Alia">Alia</option>
+                  <option value="Aisha">Aisha</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="topic-title">Title</label>
+                <input type="text" id="topic-title" required placeholder="e.g. London Breakout Strategy" />
+              </div>
+
+              <div class="form-group">
+                <label for="topic-bullets">Bullet Points (one per line)</label>
+                <textarea id="topic-bullets" rows="4" placeholder="- Rule 1&#10;- Rule 2&#10;- Rule 3"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label for="topic-image">Images (optional, multiple)</label>
+                <input type="file" id="topic-image" accept="image/*" multiple />
+              </div>
+
+              <div class="form-group">
+                <label for="topic-video">Video Link (optional)</label>
+                <input type="url" id="topic-video" placeholder="https://youtube.com/..." />
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn primary" id="save-topic-btn">Save Topic</button>
+                <button type="button" class="btn secondary" id="cancel-topic-edit-btn" style="display:none;">Cancel Edit</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Topic Detail -->
+          <div class="card detail-card">
+            <div class="card-header">
+              <h2>Topic Detail</h2>
+            </div>
+            <div id="topic-detail">
+              <p>Select a topic to view details.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RISK CALCULATOR -->
+      <section id="calculator-section" class="section">
+        <header class="section-header">
+          <h1>Risk Management Calculator</h1>
+          <p>Your protection tool before every trade.</p>
+        </header>
+
+        <div class="card calculator-card">
+          <form id="risk-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="acc-balance">Account Balance ($)</label>
+                <input type="number" id="acc-balance" step="0.01" required />
+              </div>
+              <div class="form-group">
+                <label for="lot-size-select">Lot Size</label>
+                <select id="lot-size-select" required>
+                  <option value="0.01">0.01 (Micro)</option>
+                  <option value="0.10">0.10 (Mini)</option>
+                  <option value="1.00">1.00 (Standard)</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="lot-size-custom">Custom Lot (if selected)</label>
+                <input type="number" id="lot-size-custom" step="0.01" placeholder="e.g. 0.03" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="position-side">Position</label>
+                <select id="position-side">
+                  <option value="buy">Buy (long)</option>
+                  <option value="sell">Sell (short)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="calc-entry">Entry Price</label>
+                <input type="number" id="calc-entry" step="0.00001" required />
+              </div>
+              <div class="form-group">
+                <label for="risk-percent">Custom Risk % (optional)</label>
+                <input type="number" id="risk-percent" step="0.1" placeholder="e.g. 5" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="rr-ratio">Custom R:R (Risk : Reward)</label>
+                <input type="text" id="rr-ratio" placeholder="e.g. 1:2 (default), 1:3, 3:4" />
+                <small>If left empty, calculator uses 1:2 (risk 2% → reward 4%) by default.</small>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn primary">Calculate Risk</button>
+            </div>
+          </form>
+
+          <div class="calculator-output">
+            <div class="cards-grid">
+              <div class="card stat-card small">
+                <h3>Risk Amount (chosen %)</h3>
+                <p class="stat-value" id="calc-risk-amount">$0.00</p>
+              </div>
+              <div class="card stat-card small">
+                <h3>Potential Reward (R side)</h3>
+                <p class="stat-value" id="calc-reward-amount">$0.00</p>
+              </div>
+              <div class="card stat-card small">
+                <h3>Pip Value</h3>
+                <p class="stat-value" id="calc-pip-value">$0.00 / pip</p>
+              </div>
+            </div>
+            <div class="calculator-detail">
+              <p id="risk-warning" class="risk-warning">Enter values to see risk analysis.</p>
+              <p id="calc-sl-1">SL @ 1% = -</p>
+              <p id="calc-sl-2">SL @ 2% = -</p>
+              <p id="calc-sl-custom">SL @ custom % = -</p>
+              <p id="calc-tp-price">Take Profit = -</p>
+              <p id="calc-liquidity-price">Liquidity (100% loss price) = -</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- BACKUP & SETTINGS -->
+      <section id="backup-section" class="section">
+        <header class="section-header">
+          <h1>Backup & Settings</h1>
+          <p>Safety and control for your data.</p>
+        </header>
+
+          <div class="card backup-card">
+            <div class="backup-actions">
+              <div class="backup-block">
+                <h2>Export Data</h2>
+                <p>Download all trades and topics as a JSON backup file.</p>
+                <button class="btn primary" id="export-btn">Export JSON</button>
+              </div>
+
+              <div class="backup-block">
+                <h2>Import Data</h2>
+                <p>Restore trades and topics from a previously exported JSON file.</p>
+                <input type="file" id="import-file" accept="application/json" />
+                <button class="btn secondary" id="import-btn">Import JSON</button>
+              </div>
+
+              <div class="backup-block">
+                <h2>Theme</h2>
+                <p>Switch between dark (default) and light day mode.</p>
+                <select id="theme-select">
+                  <option value="dark">Dark</option>
+                  <option value="light">Light (Day)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
+
