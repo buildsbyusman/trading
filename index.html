@@ -7,11 +7,74 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app-container">
+  <!-- Auth Screen -->
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="logo">
+          <span class="logo-main">TradeVault</span>
+          <span class="logo-sub">Sign in to continue</span>
+        </div>
+      </div>
+
+      <div class="auth-grid">
+        <form id="login-form" class="auth-form card">
+          <div class="card-header">
+            <h2>Login</h2>
+          </div>
+          <div class="form-group">
+            <label for="login-email">Email</label>
+            <input id="login-email" type="email" autocomplete="email" required />
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <input id="login-password" type="password" autocomplete="current-password" required />
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn primary">Login</button>
+          </div>
+          <p id="login-error" class="auth-error" style="display:none;"></p>
+        </form>
+
+        <form id="signup-form" class="auth-form card">
+          <div class="card-header">
+            <h2>Sign up</h2>
+          </div>
+          <div class="form-group">
+            <label for="signup-trader">Trader</label>
+            <select id="signup-trader" required>
+              <option value="">Select trader</option>
+              <option value="Dr. Adnan">Dr. Adnan</option>
+              <option value="Muhammad Usman">Muhammad Usman</option>
+              <option value="Amna">Amna</option>
+              <option value="Alia">Alia</option>
+              <option value="Aisha">Aisha</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="signup-email">Email</label>
+            <input id="signup-email" type="email" autocomplete="email" required />
+          </div>
+          <div class="form-group">
+            <label for="signup-password">Password</label>
+            <input id="signup-password" type="password" autocomplete="new-password" required minlength="6" />
+            <small>Password must be at least 6 characters.</small>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn secondary">Create account</button>
+          </div>
+          <p id="signup-error" class="auth-error" style="display:none;"></p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="app" class="app-container" style="display:none;">
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="logo">
         <span class="logo-main">TradeVault</span>
+        <span class="logo-sub" id="user-badge" style="display:none;"></span>
       </div>
       <nav class="nav">
         <button class="nav-link active" data-section="dashboard-section">🏠 Dashboard</button>
@@ -23,11 +86,22 @@
       </nav>
       <div class="sidebar-footer">
         <p>Powered by Dr. Adnan</p>
+        <button class="btn small secondary" id="logout-btn" style="margin-top:10px;width:100%;">Logout</button>
       </div>
     </aside>
+    <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
 
     <!-- Main Content -->
     <main class="main-content">
+      <!-- Mobile topbar -->
+      <div class="mobile-topbar">
+        <button class="btn small secondary" id="mobile-menu-btn" aria-label="Open menu">☰</button>
+        <div class="mobile-topbar-title">
+          <span id="mobile-user-label"></span>
+        </div>
+        <button class="btn small secondary" id="mobile-logout-btn">Logout</button>
+      </div>
+
       <!-- DASHBOARD -->
       <section id="dashboard-section" class="section visible">
         <header class="section-header dashboard-header">
@@ -39,7 +113,7 @@
             <label for="dashboard-trader-filter">View stats for:</label>
             <select id="dashboard-trader-filter">
               <option value="all">All traders</option>
-              <option value="Doctor Adnan">Doctor Adnan</option>
+              <option value="Dr. Adnan">Dr. Adnan</option>
               <option value="Muhammad Usman">Muhammad Usman</option>
               <option value="Amna">Amna</option>
               <option value="Alia">Alia</option>
@@ -111,7 +185,7 @@
                   <label for="trade-trader">Trader</label>
                   <select id="trade-trader" required>
                     <option value="">Select trader</option>
-                    <option value="Doctor Adnan">Doctor Adnan</option>
+                    <option value="Dr. Adnan">Dr. Adnan</option>
                     <option value="Muhammad Usman">Muhammad Usman</option>
                     <option value="Amna">Amna</option>
                     <option value="Alia">Alia</option>
@@ -202,7 +276,7 @@
               <label for="trade-filter-trader">Filter by trader</label>
               <select id="trade-filter-trader">
                 <option value="all">All traders</option>
-                <option value="Doctor Adnan">Doctor Adnan</option>
+                <option value="Dr. Adnan">Dr. Adnan</option>
                 <option value="Muhammad Usman">Muhammad Usman</option>
                 <option value="Amna">Amna</option>
                 <option value="Alia">Alia</option>
@@ -243,7 +317,7 @@
             <div class="form-group">
               <label for="performance-trader-select">Select trader</label>
               <select id="performance-trader-select">
-                <option value="Doctor Adnan">Doctor Adnan</option>
+                <option value="Dr. Adnan">Dr. Adnan</option>
                 <option value="Muhammad Usman">Muhammad Usman</option>
                 <option value="Amna">Amna</option>
                 <option value="Alia">Alia</option>
@@ -254,6 +328,9 @@
               <span id="perf-summary-pl"></span>
               <span id="perf-summary-days"></span>
               <span id="perf-summary-active"></span>
+            </div>
+            <div>
+              <button class="btn small secondary" id="perf-export-btn">Export CSV</button>
             </div>
           </div>
           <p class="performance-note">Daily target is fixed at 10% (reference basis) for all traders.</p>
@@ -304,7 +381,7 @@
                 <label for="topic-trader">Trader</label>
                 <select id="topic-trader" required>
                   <option value="">Select trader</option>
-                  <option value="Doctor Adnan">Doctor Adnan</option>
+                  <option value="Dr. Adnan">Dr. Adnan</option>
                   <option value="Muhammad Usman">Muhammad Usman</option>
                   <option value="Amna">Amna</option>
                   <option value="Alia">Alia</option>
@@ -365,23 +442,35 @@
                 <input type="number" id="acc-balance" step="0.01" required />
               </div>
               <div class="form-group">
-                <label for="trade-amount">Trade Amount ($ used)</label>
-                <input type="number" id="trade-amount" step="0.01" required />
+                <label for="lot-size-select">Lot Size</label>
+                <select id="lot-size-select" required>
+                  <option value="0.01">0.01 (Micro)</option>
+                  <option value="0.10">0.10 (Mini)</option>
+                  <option value="1.00">1.00 (Standard)</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="lot-size-custom">Custom Lot (if selected)</label>
+                <input type="number" id="lot-size-custom" step="0.01" placeholder="e.g. 0.03" />
               </div>
             </div>
 
             <div class="form-row">
               <div class="form-group">
+                <label for="position-side">Position</label>
+                <select id="position-side">
+                  <option value="buy">Buy (long)</option>
+                  <option value="sell">Sell (short)</option>
+                </select>
+              </div>
+              <div class="form-group">
                 <label for="calc-entry">Entry Price</label>
                 <input type="number" id="calc-entry" step="0.00001" required />
               </div>
               <div class="form-group">
-                <label for="calc-sl">Stop Loss</label>
-                <input type="number" id="calc-sl" step="0.00001" required />
-              </div>
-              <div class="form-group">
-                <label for="calc-tp">Take Profit</label>
-                <input type="number" id="calc-tp" step="0.00001" required />
+                <label for="risk-percent">Custom Risk % (optional)</label>
+                <input type="number" id="risk-percent" step="0.1" placeholder="e.g. 5" />
               </div>
             </div>
 
@@ -393,19 +482,26 @@
           <div class="calculator-output">
             <div class="cards-grid">
               <div class="card stat-card small">
-                <h3>Risk Amount</h3>
+                <h3>Risk Amount (chosen %)</h3>
                 <p class="stat-value" id="calc-risk-amount">$0.00</p>
               </div>
               <div class="card stat-card small">
-                <h3>Potential Reward</h3>
+                <h3>Potential Reward (2R)</h3>
                 <p class="stat-value" id="calc-reward-amount">$0.00</p>
               </div>
               <div class="card stat-card small">
-                <h3>Risk-Reward Ratio</h3>
-                <p class="stat-value" id="calc-rr">0.00</p>
+                <h3>Pip Value</h3>
+                <p class="stat-value" id="calc-pip-value">$0.00 / pip</p>
               </div>
             </div>
-            <p id="risk-warning" class="risk-warning">Enter values to see risk analysis.</p>
+            <div class="calculator-detail">
+              <p id="risk-warning" class="risk-warning">Enter values to see risk analysis.</p>
+              <p id="calc-sl-1">SL @ 1%: -</p>
+              <p id="calc-sl-2">SL @ 2%: -</p>
+              <p id="calc-sl-custom">SL @ custom %: -</p>
+              <p id="calc-tp-price">Take Profit (2R from chosen %): -</p>
+              <p id="calc-liquidity-price">Liquidity (100% loss price): -</p>
+            </div>
           </div>
         </div>
       </section>

@@ -1,18 +1,16 @@
 // ===============================
 // Simple Trading OS - TradeVault
 // Muhammad Usman
-// Pure Vanilla JS + LocalStorage
+// Vanilla JS + File-based backend (no DB)
 // ===============================
 
-// LocalStorage keys
+// LocalStorage keys (only for client preferences/auth)
 const STORAGE_KEYS = {
-  trades: "tv_trades",
-  topics: "tv_topics",
-  dailyTargets: "tv_daily_targets",
   theme: "tv_theme",
+  token: "tv_token",
 };
 
-// In-memory state (kept in sync with LocalStorage)
+// In-memory state (loaded from server)
 let trades = [];
 let topics = [];
 let dailyTargets = {};
@@ -23,19 +21,23 @@ let editingTopicId = null;
 
 // Traders list used across dropdowns
 const TRADERS = [
-  "Doctor Adnan",
+  "Dr. Adnan",
   "Muhammad Usman",
   "Amna",
   "Alia",
   "Aisha",
 ];
 
+const ADMIN_TRADERS = new Set(["Dr. Adnan", "Muhammad Usman"]);
+
+let authToken = null;
+let currentUser = null;
+
 // ===============================
 // Utility Helpers
 // ===============================
 
-// Safely parse JSON from LocalStorage
-function loadFromStorage(key, fallback) {
+function loadJsonFromStorage(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
@@ -44,9 +46,20 @@ function loadFromStorage(key, fallback) {
   }
 }
 
-// Save JSON to LocalStorage
-function saveToStorage(key, value) {
+function saveJsonToStorage(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function loadToken() {
+  return localStorage.getItem(STORAGE_KEYS.token);
+}
+
+function saveToken(token) {
+  if (!token) {
+    localStorage.removeItem(STORAGE_KEYS.token);
+    return;
+  }
+  localStorage.setItem(STORAGE_KEYS.token, token);
 }
 
 // Format number as currency
@@ -74,16 +87,13 @@ function escapeHTML(str) {
 // ===============================
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Load data
-  trades = loadFromStorage(STORAGE_KEYS.trades, []);
-  topics = loadFromStorage(STORAGE_KEYS.topics, []);
-  dailyTargets = loadFromStorage(STORAGE_KEYS.dailyTargets, {});
-
   // Apply theme preference
-  const savedTheme = loadFromStorage(STORAGE_KEYS.theme, "dark");
+  const savedTheme = loadJsonFromStorage(STORAGE_KEYS.theme, "dark");
   applyTheme(savedTheme);
 
   // Setup UI handlers
+  setupAuth();
+  setupMobileMenu();
   setupNavigation();
   setupTradeForm();
   setupTopicForm();
@@ -93,9 +103,242 @@ document.addEventListener("DOMContentLoaded", () => {
   setupTopicFilters();
   setupPerformance();
 
-  // Render data
-  renderAll();
+  // Start auth + load server state
+  bootstrap();
 });
+
+async function bootstrap() {
+  authToken = loadToken();
+
+  if (!authToken) {
+    showAuthScreen();
+    return;
+  }
+
+  try {
+    const me = await apiRequest("/api/auth/me");
+    currentUser = me.user;
+    showApp();
+    applyRoleUI();
+    await loadStoreFromServer();
+    renderAll();
+  } catch {
+    saveToken(null);
+    authToken = null;
+    currentUser = null;
+    showAuthScreen();
+  }
+}
+
+async function loadStoreFromServer() {
+  const store = await apiRequest("/api/store");
+  trades = Array.isArray(store.trades) ? store.trades : [];
+  topics = Array.isArray(store.topics) ? store.topics : [];
+  dailyTargets =
+    store.dailyTargets && typeof store.dailyTargets === "object"
+      ? store.dailyTargets
+      : {};
+}
+
+async function apiRequest(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  headers["Content-Type"] = "application/json";
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+
+  const res = await fetch(url, { ...options, headers });
+  const data = await res.json().catch(() => ({}));
+
+  if (res.status === 401) {
+    showAuthScreen("Session expired. Please login again.");
+    throw new Error(data.error || "Unauthorized");
+  }
+  if (!res.ok) {
+    throw new Error(data.error || "Request failed");
+  }
+  return data;
+}
+
+function showAuthScreen(message) {
+  const auth = document.getElementById("auth-screen");
+  const app = document.getElementById("app");
+  if (app) app.style.display = "none";
+  if (auth) auth.style.display = "grid";
+  if (message) {
+    const el = document.getElementById("login-error");
+    if (el) {
+      el.textContent = message;
+      el.style.display = "block";
+    }
+  }
+}
+
+function showApp() {
+  const auth = document.getElementById("auth-screen");
+  const app = document.getElementById("app");
+  if (auth) auth.style.display = "none";
+  if (app) app.style.display = "flex";
+
+  const badge = document.getElementById("user-badge");
+  const mobileLabel = document.getElementById("mobile-user-label");
+  const label = currentUser
+    ? `${currentUser.traderName} (${currentUser.role})`
+    : "";
+  if (badge) {
+    badge.textContent = label;
+    badge.style.display = label ? "block" : "none";
+  }
+  if (mobileLabel) mobileLabel.textContent = label;
+}
+
+function applyRoleUI() {
+  if (!currentUser) return;
+
+  const isAdmin = currentUser.role === "admin";
+
+  // Dashboard filter
+  const dashFilter = document.getElementById("dashboard-trader-filter");
+  if (dashFilter) {
+    if (isAdmin) {
+      dashFilter.disabled = false;
+    } else {
+      dashFilter.value = currentUser.traderName;
+      dashFilter.disabled = true;
+    }
+  }
+
+  // Trade form trader selector
+  const tradeTrader = document.getElementById("trade-trader");
+  if (tradeTrader) {
+    if (isAdmin) {
+      tradeTrader.disabled = false;
+    } else {
+      tradeTrader.value = currentUser.traderName;
+      tradeTrader.disabled = true;
+    }
+  }
+
+  // Trade history filter
+  const tradeFilter = document.getElementById("trade-filter-trader");
+  if (tradeFilter) {
+    if (isAdmin) {
+      tradeFilter.disabled = false;
+    } else {
+      tradeFilter.value = currentUser.traderName;
+      tradeFilter.disabled = true;
+    }
+  }
+
+  // Performance select
+  const perfSelect = document.getElementById("performance-trader-select");
+  if (perfSelect) {
+    if (isAdmin) {
+      perfSelect.disabled = false;
+    } else {
+      perfSelect.value = currentUser.traderName;
+      perfSelect.disabled = true;
+    }
+  }
+}
+
+function setupMobileMenu() {
+  const btn = document.getElementById("mobile-menu-btn");
+  const overlay = document.getElementById("sidebar-overlay");
+
+  function close() {
+    document.body.classList.remove("sidebar-open");
+  }
+  function toggle() {
+    document.body.classList.toggle("sidebar-open");
+  }
+
+  if (btn) btn.addEventListener("click", toggle);
+  if (overlay) overlay.addEventListener("click", close);
+
+  document.querySelectorAll(".nav-link").forEach((b) => {
+    b.addEventListener("click", () => {
+      if (window.matchMedia("(max-width: 1000px)").matches) close();
+    });
+  });
+}
+
+function setupAuth() {
+  const loginForm = document.getElementById("login-form");
+  const signupForm = document.getElementById("signup-form");
+  const logoutBtn = document.getElementById("logout-btn");
+  const mobileLogoutBtn = document.getElementById("mobile-logout-btn");
+
+  function setError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!message) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.textContent = message;
+    el.style.display = "block";
+  }
+
+  async function handleAuthSuccess(payload) {
+    authToken = payload.token;
+    currentUser = payload.user;
+    saveToken(authToken);
+    showApp();
+    applyRoleUI();
+    await loadStoreFromServer();
+    renderAll();
+  }
+
+  if (loginForm) {
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      setError("login-error", "");
+      try {
+        const email = document.getElementById("login-email").value.trim();
+        const password = document.getElementById("login-password").value;
+        const payload = await apiRequest("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+        await handleAuthSuccess(payload);
+      } catch (err) {
+        setError("login-error", err.message || "Login failed");
+      }
+    });
+  }
+
+  if (signupForm) {
+    signupForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      setError("signup-error", "");
+      try {
+        const traderName = document.getElementById("signup-trader").value;
+        const email = document.getElementById("signup-email").value.trim();
+        const password = document.getElementById("signup-password").value;
+        const payload = await apiRequest("/api/auth/signup", {
+          method: "POST",
+          body: JSON.stringify({ traderName, email, password }),
+        });
+        await handleAuthSuccess(payload);
+      } catch (err) {
+        setError("signup-error", err.message || "Signup failed");
+      }
+    });
+  }
+
+  function logout() {
+    saveToken(null);
+    authToken = null;
+    currentUser = null;
+    trades = [];
+    topics = [];
+    dailyTargets = {};
+    showAuthScreen();
+  }
+
+  if (logoutBtn) logoutBtn.addEventListener("click", logout);
+  if (mobileLogoutBtn) mobileLogoutBtn.addEventListener("click", logout);
+}
 
 // Render everything that depends on trades/topics
 function renderAll() {
@@ -213,6 +456,11 @@ function setupTradeForm() {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
+    if (!authToken || !currentUser) {
+      showAuthScreen("Please login first.");
+      return;
+    }
+
     const trader = document.getElementById("trade-trader").value;
     const pair = document.getElementById("pair").value.trim();
     const date = document.getElementById("date").value;
@@ -253,18 +501,24 @@ function setupTradeForm() {
       screenshot: screenshotDataUrl,
     };
 
-    if (editingTradeId) {
-      // Update existing
-      trades = trades.map((t) =>
-        t.id === editingTradeId ? { ...t, ...baseTrade } : t
-      );
-    } else {
-      // New trade
-      const id = "t_" + Date.now();
-      trades.push({ id, ...baseTrade });
+    try {
+      if (editingTradeId) {
+        const payload = await apiRequest(`/api/trades/${editingTradeId}`, {
+          method: "PUT",
+          body: JSON.stringify({ trade: baseTrade }),
+        });
+        trades = trades.map((t) => (t.id === editingTradeId ? payload.trade : t));
+      } else {
+        const payload = await apiRequest("/api/trades", {
+          method: "POST",
+          body: JSON.stringify({ trade: baseTrade }),
+        });
+        trades.push(payload.trade);
+      }
+    } catch (err) {
+      alert(err.message || "Could not save trade.");
+      return;
     }
-
-    saveToStorage(STORAGE_KEYS.trades, trades);
 
     // Reset form + editing state
     form.reset();
@@ -391,13 +645,17 @@ function startEditTrade(id) {
 }
 
 // Delete trade
-function deleteTrade(id) {
+async function deleteTrade(id) {
   if (!confirm("Delete this trade?")) return;
-  trades = trades.filter((t) => t.id !== id);
-  saveToStorage(STORAGE_KEYS.trades, trades);
-  renderDashboard();
-  renderTradesTable();
-  renderTradeDetail(null);
+  try {
+    await apiRequest(`/api/trades/${id}`, { method: "DELETE" });
+    trades = trades.filter((t) => t.id !== id);
+    renderDashboard();
+    renderTradesTable();
+    renderTradeDetail(null);
+  } catch (err) {
+    alert(err.message || "Could not delete trade.");
+  }
 }
 
 // Show detail panel for a trade
@@ -482,6 +740,11 @@ function setupTopicForm() {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
+    if (!authToken || !currentUser) {
+      showAuthScreen("Please login first.");
+      return;
+    }
+
     const trader = document.getElementById("topic-trader").value;
     const title = document.getElementById("topic-title").value.trim();
     const bulletsRaw = document
@@ -509,16 +772,26 @@ function setupTopicForm() {
       createdAt: new Date().toISOString(),
     };
 
-    if (editingTopicId) {
-      topics = topics.map((t) =>
-        t.id === editingTopicId ? { ...t, ...baseTopic } : t
-      );
-    } else {
-      const id = "topic_" + Date.now();
-      topics.push({ id, ...baseTopic });
+    try {
+      if (editingTopicId) {
+        const payload = await apiRequest(`/api/topics/${editingTopicId}`, {
+          method: "PUT",
+          body: JSON.stringify({ topic: baseTopic }),
+        });
+        topics = topics.map((t) =>
+          t.id === editingTopicId ? payload.topic : t
+        );
+      } else {
+        const payload = await apiRequest("/api/topics", {
+          method: "POST",
+          body: JSON.stringify({ topic: baseTopic }),
+        });
+        topics.push(payload.topic);
+      }
+    } catch (err) {
+      alert(err.message || "Could not save topic.");
+      return;
     }
-
-    saveToStorage(STORAGE_KEYS.topics, topics);
 
     // Reset form & editing state
     form.reset();
@@ -730,12 +1003,16 @@ function startEditTopic(id) {
 }
 
 // Delete topic
-function deleteTopic(id) {
+async function deleteTopic(id) {
   if (!confirm("Delete this topic?")) return;
-  topics = topics.filter((t) => t.id !== id);
-  saveToStorage(STORAGE_KEYS.topics, topics);
-  renderTopicsList();
-  renderTopicDetail(null);
+  try {
+    await apiRequest(`/api/topics/${id}`, { method: "DELETE" });
+    topics = topics.filter((t) => t.id !== id);
+    renderTopicsList();
+    renderTopicDetail(null);
+  } catch (err) {
+    alert(err.message || "Could not delete topic.");
+  }
 }
 
 // ===============================
@@ -746,8 +1023,13 @@ function setupRiskCalculator() {
   const form = document.getElementById("risk-form");
   const riskAmountEl = document.getElementById("calc-risk-amount");
   const rewardAmountEl = document.getElementById("calc-reward-amount");
-  const rrEl = document.getElementById("calc-rr");
+  const pipValueEl = document.getElementById("calc-pip-value");
   const warningEl = document.getElementById("risk-warning");
+  const sl1El = document.getElementById("calc-sl-1");
+  const sl2El = document.getElementById("calc-sl-2");
+  const slCustomEl = document.getElementById("calc-sl-custom");
+  const tpPriceEl = document.getElementById("calc-tp-price");
+  const liqPriceEl = document.getElementById("calc-liquidity-price");
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -755,72 +1037,133 @@ function setupRiskCalculator() {
     const balance = parseFloat(
       document.getElementById("acc-balance").value
     );
-    const tradeAmount = parseFloat(
-      document.getElementById("trade-amount").value
-    );
+    const lotSelect = document.getElementById("lot-size-select").value;
+    const lotCustomRaw =
+      document.getElementById("lot-size-custom").value;
+    const side = document.getElementById("position-side").value;
     const entry = parseFloat(
       document.getElementById("calc-entry").value
     );
-    const sl = parseFloat(document.getElementById("calc-sl").value);
-    const tp = parseFloat(document.getElementById("calc-tp").value);
+    const customRiskPct = parseFloat(
+      document.getElementById("risk-percent").value
+    );
+
+    let lotSize =
+      lotSelect === "custom"
+        ? parseFloat(lotCustomRaw)
+        : parseFloat(lotSelect);
 
     if (
       !isFinite(balance) ||
-      !isFinite(tradeAmount) ||
       !isFinite(entry) ||
-      !isFinite(sl) ||
-      !isFinite(tp)
+      !isFinite(lotSize) ||
+      lotSize <= 0
     ) {
+      warningEl.textContent =
+        "Please enter a valid balance, lot size, and entry price.";
       return;
     }
 
-    // Price move fractions relative to entry
-    const riskFraction = Math.abs(entry - sl) / Math.abs(entry || 1);
-    const rewardFraction = Math.abs(tp - entry) / Math.abs(entry || 1);
+    // Pip value from lot size (0.01→$0.1, 0.10→$1, 1.00→$10)
+    const pipValue = lotSize * 10; // USD per pip
+    pipValueEl.textContent = formatCurrency(pipValue).replace(
+      ")",
+      ""
+    ) + " / pip";
 
-    // Cash risk and reward based on trade amount
-    const riskAmount = tradeAmount * riskFraction;
-    const rewardAmount = tradeAmount * (rewardFraction || 0);
+    // Helper for SL/TP based on risk %
+    function levelsForRisk(riskPct) {
+      if (!isFinite(riskPct) || riskPct <= 0) return null;
+      const riskAmount = (balance * riskPct) / 100;
+      const pips = riskAmount / pipValue; // pips to risk this amount
+      const priceMove = pips / 10; // 10 pips = 1 price unit
+      const slPrice =
+        side === "buy" ? entry - priceMove : entry + priceMove;
+      const tpPrice =
+        side === "buy" ? entry + 2 * priceMove : entry - 2 * priceMove;
+      return { riskAmount, slPrice, tpPrice, pips, riskPct };
+    }
 
-    // Risk % of account
-    const riskPercent = balance ? (riskAmount / balance) * 100 : 0;
+    const lvl1 = levelsForRisk(1);
+    const lvl2 = levelsForRisk(2);
+    const effectiveRiskPct =
+      isFinite(customRiskPct) && customRiskPct > 0
+        ? customRiskPct
+        : 2;
+    const lvlCustom = levelsForRisk(effectiveRiskPct);
 
-    // R:R
-    const rr =
-      riskFraction > 0 ? rewardFraction / riskFraction : 0;
+    // Liquidity = 100% loss of balance
+    const lvlLiq = levelsForRisk(100);
 
-    riskAmountEl.textContent = formatCurrency(riskAmount);
-    rewardAmountEl.textContent = formatCurrency(rewardAmount);
-    rrEl.textContent = rr.toFixed(2);
+    function fmtPrice(p) {
+      return isFinite(p) ? p.toFixed(5) : "-";
+    }
 
-    // Warning and account projections
+    if (lvl1) {
+      sl1El.textContent =
+        "SL @ 1%: " +
+        fmtPrice(lvl1.slPrice) +
+        " (risk " +
+        formatCurrency(lvl1.riskAmount) +
+        ")";
+    } else {
+      sl1El.textContent = "SL @ 1%: -";
+    }
+
+    if (lvl2) {
+      sl2El.textContent =
+        "SL @ 2%: " +
+        fmtPrice(lvl2.slPrice) +
+        " (risk " +
+        formatCurrency(lvl2.riskAmount) +
+        ")";
+    } else {
+      sl2El.textContent = "SL @ 2%: -";
+    }
+
+    if (lvlCustom) {
+      slCustomEl.textContent =
+        "SL @ " +
+        effectiveRiskPct.toFixed(2) +
+        "%: " +
+        fmtPrice(lvlCustom.slPrice) +
+        " (risk " +
+        formatCurrency(lvlCustom.riskAmount) +
+        ")";
+      tpPriceEl.textContent =
+        "Take Profit (2R): " + fmtPrice(lvlCustom.tpPrice);
+
+      riskAmountEl.textContent = formatCurrency(lvlCustom.riskAmount);
+      rewardAmountEl.textContent = formatCurrency(
+        lvlCustom.riskAmount * 2
+      );
+    } else {
+      slCustomEl.textContent = "SL @ custom %: -";
+      tpPriceEl.textContent = "Take Profit (2R from chosen %): -";
+      riskAmountEl.textContent = "$0.00";
+      rewardAmountEl.textContent = "$0.00";
+    }
+
+    if (lvlLiq) {
+      liqPriceEl.textContent =
+        "Liquidity (100% loss): " + fmtPrice(lvlLiq.slPrice);
+    } else {
+      liqPriceEl.textContent = "Liquidity (100% loss): -";
+    }
+
+    // Simple guidance message
     warningEl.classList.remove("high", "safe");
-    const projectedWin = balance + rewardAmount;
-    const projectedLoss = balance - riskAmount;
-
-    if (riskPercent > 2) {
+    if (effectiveRiskPct > 2) {
       warningEl.textContent =
-        "Warning: only 1–2% risk is recommended. You are risking " +
-        riskPercent.toFixed(2) +
-        "% (" +
-        formatCurrency(riskAmount) +
-        ") of your account. If you win, balance ≈ " +
-        formatCurrency(projectedWin) +
-        ". If you lose, balance ≈ " +
-        formatCurrency(projectedLoss) +
-        ".";
+        "Warning: you are risking " +
+        effectiveRiskPct.toFixed(2) +
+        "% of your account. Only 1–2% is recommended.";
       warningEl.classList.add("high");
     } else {
       warningEl.textContent =
         "You are risking " +
-        riskPercent.toFixed(2) +
-        "% (" +
-        formatCurrency(riskAmount) +
-        ") of your account. Only 1–2% risk is considered safe. If you win, balance ≈ " +
-        formatCurrency(projectedWin) +
-        ". If you lose, balance ≈ " +
-        formatCurrency(projectedLoss) +
-        ".";
+        effectiveRiskPct.toFixed(2) +
+        "% of your account. This is within the 1–2% safe zone.";
       warningEl.classList.add("safe");
     }
   });
@@ -837,13 +1180,13 @@ function setupBackup() {
   const themeSelect = document.getElementById("theme-select");
 
   // Initialize theme select
-  const savedTheme = loadFromStorage(STORAGE_KEYS.theme, "dark");
+  const savedTheme = loadJsonFromStorage(STORAGE_KEYS.theme, "dark");
   if (themeSelect) {
     themeSelect.value = savedTheme;
     themeSelect.addEventListener("change", () => {
       const theme = themeSelect.value;
       applyTheme(theme);
-      saveToStorage(STORAGE_KEYS.theme, theme);
+      saveJsonToStorage(STORAGE_KEYS.theme, theme);
     });
   }
 
@@ -853,7 +1196,7 @@ function setupBackup() {
       trades,
       topics,
       dailyTargets,
-      theme: loadFromStorage(STORAGE_KEYS.theme, "dark"),
+      theme: loadJsonFromStorage(STORAGE_KEYS.theme, "dark"),
       exportedAt: new Date().toISOString(),
     };
 
@@ -880,26 +1223,36 @@ function setupBackup() {
     }
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const imported = JSON.parse(e.target.result);
         if (!imported || typeof imported !== "object") {
           throw new Error("Invalid file");
         }
 
-        trades = Array.isArray(imported.trades) ? imported.trades : [];
-        topics = Array.isArray(imported.topics) ? imported.topics : [];
-        dailyTargets =
-          imported.dailyTargets && typeof imported.dailyTargets === "object"
-            ? imported.dailyTargets
-            : {};
+        if (!currentUser || currentUser.role !== "admin") {
+          alert("Only admins can import shared data.");
+          return;
+        }
 
-        saveToStorage(STORAGE_KEYS.trades, trades);
-        saveToStorage(STORAGE_KEYS.topics, topics);
-        saveToStorage(STORAGE_KEYS.dailyTargets, dailyTargets);
+        const nextStore = {
+          trades: Array.isArray(imported.trades) ? imported.trades : [],
+          topics: Array.isArray(imported.topics) ? imported.topics : [],
+          dailyTargets:
+            imported.dailyTargets && typeof imported.dailyTargets === "object"
+              ? imported.dailyTargets
+              : {},
+        };
+
+        await apiRequest("/api/store/import", {
+          method: "POST",
+          body: JSON.stringify({ store: nextStore }),
+        });
+
+        await loadStoreFromServer();
 
         if (imported.theme) {
-          saveToStorage(STORAGE_KEYS.theme, imported.theme);
+          saveJsonToStorage(STORAGE_KEYS.theme, imported.theme);
           applyTheme(imported.theme);
           if (themeSelect) {
             themeSelect.value = imported.theme;
@@ -936,10 +1289,18 @@ function applyTheme(theme) {
 
 function setupPerformance() {
   const select = document.getElementById("performance-trader-select");
+  const exportBtn = document.getElementById("perf-export-btn");
   if (!select) return;
   select.addEventListener("change", () => {
     renderPerformance();
   });
+
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      const traderName = select.value;
+      exportPerformanceCsv(traderName);
+    });
+  }
 }
 
 function renderPerformance() {
@@ -1022,6 +1383,60 @@ function renderPerformance() {
   summaryDays.textContent = "Active days with trades: " + activeDays;
   summaryActive.textContent =
     "Trade count: " + userTrades.length + " total trades for this trader";
+}
+
+function exportPerformanceCsv(traderName) {
+  if (!traderName) return;
+
+  const byDate = {};
+  const userTrades = trades.filter((t) => t.trader === traderName && t.date);
+
+  userTrades.forEach((t) => {
+    const d = t.date;
+    if (!byDate[d]) {
+      byDate[d] = { pl: 0, count: 0, maxRiskPct: 0 };
+    }
+    const priceRiskPct =
+      t.entry && t.sl ? (Math.abs(t.entry - t.sl) / Math.abs(t.entry)) * 100 : 0;
+    byDate[d].pl += Number(t.pl) || 0;
+    byDate[d].count += 1;
+    byDate[d].maxRiskPct = Math.max(byDate[d].maxRiskPct, priceRiskPct);
+  });
+
+  const dateKeys = Object.keys(byDate).sort(
+    (a, b) => new Date(a) - new Date(b)
+  );
+
+  const rows = [
+    ["Date", "TotalPL", "Status", "Trades", "MaxRiskPercent"],
+  ];
+
+  dateKeys.forEach((d) => {
+    const info = byDate[d];
+    const status =
+      info.pl > 0 ? "Profitable" : info.pl < 0 ? "Loss" : "Break-even";
+    rows.push([
+      d,
+      info.pl.toFixed(2),
+      status,
+      String(info.count),
+      info.maxRiskPct ? info.maxRiskPct.toFixed(2) : "0.00",
+    ]);
+  });
+
+  const csv = rows
+    .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `performance-${traderName.replace(/\s+/g, "_")}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ===============================
@@ -1237,16 +1652,22 @@ function startAnnotateTopicImage(topicId) {
 
   saveBtn.addEventListener("click", () => {
     const dataUrl = canvas.toDataURL("image/png");
-    topics = topics.map((t) =>
-      t.id === topicId
-        ? {
-            ...t,
-            image: dataUrl,
-          }
-        : t
-    );
-    saveToStorage(STORAGE_KEYS.topics, topics);
-    renderTopicDetail(topicId);
+    const topic = topics.find((t) => t.id === topicId);
+    if (!topic) return;
+
+    const nextImages = Array.isArray(topic.images) ? [...topic.images] : [];
+    if (nextImages.length === 0) nextImages.push(dataUrl);
+    else nextImages[0] = dataUrl;
+
+    apiRequest(`/api/topics/${topicId}`, {
+      method: "PUT",
+      body: JSON.stringify({ topic: { ...topic, images: nextImages } }),
+    })
+      .then((payload) => {
+        topics = topics.map((t) => (t.id === topicId ? payload.topic : t));
+        renderTopicDetail(topicId);
+      })
+      .catch((err) => alert(err.message || "Could not save annotation."));
   });
 
   cancelBtn.addEventListener("click", () => {

@@ -43,6 +43,69 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ===========================
+   Auth
+   =========================== */
+
+.auth-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 18px 12px;
+}
+
+.auth-card {
+  width: min(980px, 100%);
+}
+
+.auth-brand {
+  margin-bottom: 14px;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.auth-error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+/* ===========================
+   Mobile Topbar + Overlay
+   =========================== */
+
+.mobile-topbar {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 10px 10px;
+  margin: -6px -6px 10px;
+  background: rgba(8, 11, 18, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobile-topbar-title {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
 /* App container */
 
 .app-container {
@@ -809,12 +872,42 @@ body.theme-light .risk-warning {
     grid-template-columns: 1fr;
   }
 
+  .mobile-topbar {
+    display: flex;
+  }
+
   .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 40;
+    transform: translateX(-110%);
+    transition: transform var(--transition-med);
+  }
+
+  body.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgba(0, 0, 0, 0.55);
     display: none;
+  }
+
+  body.sidebar-open .sidebar-overlay {
+    display: block;
   }
 
   .main-content {
     padding: 14px 12px 18px;
+  }
+
+  .main-content {
+    max-width: 1200px;
   }
 }
 
@@ -824,6 +917,10 @@ body.theme-light .risk-warning {
   }
 
   .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-grid {
     grid-template-columns: 1fr;
   }
 }
