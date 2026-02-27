@@ -1066,10 +1066,9 @@ function setupRiskCalculator() {
 
     // Pip value from lot size (0.01→$0.1, 0.10→$1, 1.00→$10)
     const pipValue = lotSize * 10; // USD per pip
-    pipValueEl.textContent = formatCurrency(pipValue).replace(
-      ")",
-      ""
-    ) + " / pip";
+    if (pipValueEl) {
+      pipValueEl.textContent = `$${pipValue.toFixed(2)} / pip`;
+    }
 
     // Helper for SL/TP based on risk %
     function levelsForRisk(riskPct) {

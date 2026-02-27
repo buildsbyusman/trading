@@ -10,9 +10,8 @@ const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "tradevault-dev-secret-change-me";
 
-const DATA_DIR = path.join(__dirname, "data");
-const USERS_PATH = path.join(DATA_DIR, "users.json");
-const STORE_PATH = path.join(DATA_DIR, "store.json");
+const USERS_PATH = path.join(__dirname, "users.json");
+const STORE_PATH = path.join(__dirname, "store.json");
 
 const TRADERS = ["Dr. Adnan", "Muhammad Usman", "Amna", "Alia", "Aisha"];
 const ADMIN_TRADERS = new Set(["Dr. Adnan", "Muhammad Usman"]);
@@ -44,8 +43,6 @@ async function writeJsonAtomic(filePath, data) {
 }
 
 async function ensureDataFiles() {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-
   const users = await readJson(USERS_PATH, null);
   if (!Array.isArray(users)) {
     await writeJsonAtomic(USERS_PATH, []);
@@ -59,46 +56,6 @@ async function ensureDataFiles() {
       dailyTargets: {},
       updatedAt: new Date().toISOString(),
     });
-  }
-}
-
-async function ensureSeedAdmins() {
-  const users = await readJson(USERS_PATH, []);
-  const byTrader = new Map(users.map((u) => [u.traderName, u]));
-
-  const seeds = [
-    {
-      traderName: "Dr. Adnan",
-      email: "adnan@tradevault.local",
-      password: "Admin@123",
-      role: "admin",
-    },
-    {
-      traderName: "Muhammad Usman",
-      email: "usman@tradevault.local",
-      password: "Admin@123",
-      role: "admin",
-    },
-  ];
-
-  let changed = false;
-
-  for (const seed of seeds) {
-    if (byTrader.has(seed.traderName)) continue;
-    const passwordHash = await bcrypt.hash(seed.password, 10);
-    users.push({
-      id: crypto.randomUUID(),
-      traderName: seed.traderName,
-      email: seed.email.toLowerCase(),
-      passwordHash,
-      role: seed.role,
-      createdAt: new Date().toISOString(),
-    });
-    changed = true;
-  }
-
-  if (changed) {
-    await writeJsonAtomic(USERS_PATH, users);
   }
 }
 
@@ -528,12 +485,11 @@ app.delete("/api/topics/:id", authMiddleware, async (req, res) => {
 
 app.use(express.static(__dirname));
 
-app.get("*", (req, res) => {
+app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
 ensureDataFiles()
-  .then(ensureSeedAdmins)
   .then(() => {
     app.listen(PORT, () => {
       console.log(`TradeVault running on http://localhost:${PORT}`);
