@@ -111,7 +111,11 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function bootstrap() {
-  authToken = loadToken();
+  let token = null;
+  try {
+    token = localStorage.getItem(STORAGE_KEYS.token);
+  } catch (e) {}
+  authToken = token;
 
   if (!authToken) {
     showAuthScreen();
@@ -121,15 +125,19 @@ async function bootstrap() {
   try {
     const me = await apiRequest("/api/auth/me");
     currentUser = me.user;
-    saveJsonToStorage(STORAGE_KEYS.user, currentUser);
+    try {
+      saveJsonToStorage(STORAGE_KEYS.user, currentUser);
+    } catch (e) {}
     showApp();
     applyRoleUI();
     await loadStoreFromServer();
     renderAll();
   } catch (err) {
     if (err && err.isUnauthorized) {
-      saveToken(null);
-      saveJsonToStorage(STORAGE_KEYS.user, null);
+      try {
+        localStorage.removeItem(STORAGE_KEYS.token);
+        saveJsonToStorage(STORAGE_KEYS.user, null);
+      } catch (e) {}
     }
     authToken = null;
     currentUser = null;
@@ -147,6 +155,7 @@ async function loadStoreFromServer() {
       : {};
 }
 
+
 async function apiRequest(url, options = {}) {
   const headers = { ...(options.headers || {}) };
   headers["Content-Type"] = "application/json";
@@ -156,6 +165,7 @@ async function apiRequest(url, options = {}) {
   const data = await res.json().catch(() => ({}));
 
   if (res.status === 401) {
+    authToken = null;
     saveToken(null);
     saveJsonToStorage(STORAGE_KEYS.user, null);
     showAuthScreen("Session expired. Please login again.");
@@ -251,10 +261,19 @@ function applyRoleUI() {
   }
 }
 
+// Today's date in local timezone (YYYY-MM-DD) so it matches system date everywhere.
+function getTodayLocal() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return y + "-" + m + "-" + day;
+}
+
 // Initialize all date inputs with today's date visually and wire calendar opening.
 // For filter fields we mark them as "autofilled" so logic can ignore them until user changes.
 function initDateInputs() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayLocal();
   const dateInputs = document.querySelectorAll('input[type="date"]');
   dateInputs.forEach((input) => {
     if (!input.value) {
@@ -338,10 +357,22 @@ function setupAuth() {
   }
 
   async function handleAuthSuccess(payload) {
-    authToken = payload.token;
-    currentUser = payload.user;
-    saveToken(authToken);
-    saveJsonToStorage(STORAGE_KEYS.user, currentUser);
+    const token = payload.token;
+    const user = payload.user;
+    if (token) {
+      authToken = token;
+      try {
+        localStorage.setItem(STORAGE_KEYS.token, token);
+      } catch (e) {
+        // ignore if localStorage unavailable
+      }
+    }
+    if (user) {
+      currentUser = user;
+      try {
+        saveJsonToStorage(STORAGE_KEYS.user, user);
+      } catch (e) {}
+    }
     showApp();
     applyRoleUI();
     await loadStoreFromServer();
@@ -417,7 +448,7 @@ function renderAll() {
   renderDashboard();
   renderTradesTable();
   renderTradeDetail(null);
-  renderTopicsTable();
+  renderTopicsList();
   renderTopicDetail(null);
   renderPerformance();
 }
@@ -667,6 +698,7 @@ function setupTradeForm() {
     renderDashboard();
     renderTradesTable();
     renderTradeDetail(null);
+    renderPerformance();
 
     // Reset form + editing state
     form.reset();
