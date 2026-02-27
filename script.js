@@ -23,12 +23,13 @@ let editingTopicId = null;
 const TRADERS = [
   "Dr. Adnan",
   "Muhammad Usman",
+  "Mohammad Ismail",
   "Amna",
   "Alia",
   "Aisha",
 ];
 
-const ADMIN_TRADERS = new Set(["Dr. Adnan", "Muhammad Usman"]);
+const ADMIN_TRADERS = new Set(["Dr. Adnan", "Muhammad Usman", "Mohammad Ismail"]);
 
 let authToken = null;
 let currentUser = null;
@@ -266,6 +267,8 @@ function setupAuth() {
   const signupForm = document.getElementById("signup-form");
   const logoutBtn = document.getElementById("logout-btn");
   const mobileLogoutBtn = document.getElementById("mobile-logout-btn");
+  const showSignupBtn = document.getElementById("show-signup-btn");
+  const showLoginBtn = document.getElementById("show-login-btn");
 
   function setError(id, message) {
     const el = document.getElementById(id);
@@ -325,6 +328,19 @@ function setupAuth() {
       }
     });
   }
+
+  function showLogin() {
+    if (loginForm) loginForm.style.display = "block";
+    if (signupForm) signupForm.style.display = "none";
+  }
+
+  function showSignup() {
+    if (loginForm) loginForm.style.display = "none";
+    if (signupForm) signupForm.style.display = "block";
+  }
+
+  if (showSignupBtn) showSignupBtn.addEventListener("click", showSignup);
+  if (showLoginBtn) showLoginBtn.addEventListener("click", showLogin);
 
   function logout() {
     saveToken(null);

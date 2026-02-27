@@ -13,8 +13,19 @@ const JWT_SECRET = process.env.JWT_SECRET || "tradevault-dev-secret-change-me";
 const USERS_PATH = path.join(__dirname, "users.json");
 const STORE_PATH = path.join(__dirname, "store.json");
 
-const TRADERS = ["Dr. Adnan", "Muhammad Usman", "Amna", "Alia", "Aisha"];
-const ADMIN_TRADERS = new Set(["Dr. Adnan", "Muhammad Usman"]);
+const TRADERS = [
+  "Dr. Adnan",
+  "Muhammad Usman",
+  "Mohammad Ismail",
+  "Amna",
+  "Alia",
+  "Aisha",
+];
+const ADMIN_TRADERS = new Set([
+  "Dr. Adnan",
+  "Muhammad Usman",
+  "Mohammad Ismail",
+]);
 
 app.use(express.json({ limit: "12mb" }));
 
