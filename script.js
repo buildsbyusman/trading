@@ -8,6 +8,7 @@
 const STORAGE_KEYS = {
   theme: "tv_theme",
   token: "tv_token",
+  user: "tv_user",
 };
 
 // In-memory state (loaded from server)
@@ -120,15 +121,19 @@ async function bootstrap() {
   try {
     const me = await apiRequest("/api/auth/me");
     currentUser = me.user;
+    saveJsonToStorage(STORAGE_KEYS.user, currentUser);
     showApp();
     applyRoleUI();
     await loadStoreFromServer();
     renderAll();
-  } catch {
-    saveToken(null);
+  } catch (err) {
+    if (err && err.isUnauthorized) {
+      saveToken(null);
+      saveJsonToStorage(STORAGE_KEYS.user, null);
+    }
     authToken = null;
     currentUser = null;
-    showAuthScreen();
+    showAuthScreen(err && err.isUnauthorized ? "Session expired. Please login again." : undefined);
   }
 }
 
@@ -151,8 +156,12 @@ async function apiRequest(url, options = {}) {
   const data = await res.json().catch(() => ({}));
 
   if (res.status === 401) {
+    saveToken(null);
+    saveJsonToStorage(STORAGE_KEYS.user, null);
     showAuthScreen("Session expired. Please login again.");
-    throw new Error(data.error || "Unauthorized");
+    const err = new Error(data.error || "Unauthorized");
+    err.isUnauthorized = true;
+    throw err;
   }
   if (!res.ok) {
     throw new Error(data.error || "Request failed");
@@ -278,10 +287,13 @@ function getActiveDate(input) {
 
 function setupDashboardFilters() {
   const dashFilter = document.getElementById("dashboard-trader-filter");
-  if (!dashFilter) return;
-  dashFilter.addEventListener("change", () => {
-    renderDashboard();
-  });
+  const exactEl = document.getElementById("dashboard-date-exact");
+  const fromEl = document.getElementById("dashboard-date-from");
+  const toEl = document.getElementById("dashboard-date-to");
+  if (dashFilter) dashFilter.addEventListener("change", renderDashboard);
+  if (exactEl) exactEl.addEventListener("change", renderDashboard);
+  if (fromEl) fromEl.addEventListener("change", renderDashboard);
+  if (toEl) toEl.addEventListener("change", renderDashboard);
 }
 
 function setupMobileMenu() {
@@ -329,6 +341,7 @@ function setupAuth() {
     authToken = payload.token;
     currentUser = payload.user;
     saveToken(authToken);
+    saveJsonToStorage(STORAGE_KEYS.user, currentUser);
     showApp();
     applyRoleUI();
     await loadStoreFromServer();
@@ -646,17 +659,22 @@ function setupTradeForm() {
       return;
     }
 
+    // Sync from server so trade history is up to date, then re-render immediately
+    await loadStoreFromServer();
+    renderDashboard();
+    renderTradesTable();
+    renderTradeDetail(null);
+
     // Reset form + editing state
     form.reset();
     editingTradeId = null;
     document.getElementById("trade-form-title").textContent = "Add Trade";
     cancelBtn.style.display = "none";
-    setDefaultDateIfEmpty();
+    initDateInputs();
 
-    // Re-render
-    renderDashboard();
-    renderTradesTable();
-    renderTradeDetail(null);
+    // Scroll trade history into view so user sees the new trade at top
+    const historyCard = document.querySelector(".history-card");
+    if (historyCard) historyCard.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
   cancelBtn.addEventListener("click", () => {
@@ -956,15 +974,20 @@ function setupTopicForm() {
       return;
     }
 
+    // Sync from server so topic list is up to date, then re-render immediately
+    await loadStoreFromServer();
+    renderTopicsList();
+    renderTopicDetail(null);
+
     // Reset form & editing state
     form.reset();
     editingTopicId = null;
     document.getElementById("topic-form-title").textContent = "Add Topic";
     cancelBtn.style.display = "none";
 
-    // Re-render
-    renderTopicsList();
-    renderTopicDetail(null);
+    // Scroll topics list into view so user sees the new topic
+    const topicListCard = document.querySelector("#topic-list")?.closest(".card");
+    if (topicListCard) topicListCard.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
   cancelBtn.addEventListener("click", () => {
@@ -1631,20 +1654,22 @@ function renderPerformance() {
     const tr = document.createElement("tr");
     tr.className = "performance-inactive-row";
     tr.innerHTML =
-      '<td colspan="5" style="text-align:center;font-size:12px;">No trades yet for this trader.</td>';
+      '<td colspan="6" style="text-align:center;font-size:12px;">No trades yet for this trader.</td>';
     tbody.appendChild(tr);
   }
 
-  // Summary
-  summaryPl.textContent =
-    "Total P/L: " + formatCurrency(totalPl) + " for " + traderName;
-  summaryDays.textContent = "Active days with trades: " + activeDays;
-  summaryActive.textContent =
-    "Trade count: " + userTrades.length + " total trades for this trader";
+  // Summary: use innerHTML so we can style label vs value (bold/value color)
+  const traderLabel = traderName === "all" ? "all traders" : traderName;
+  summaryPl.innerHTML =
+    'Total P/L: <span class="perf-summary-value">' + formatCurrency(totalPl) + " for " + escapeHTML(traderLabel) + "</span>";
+  summaryDays.innerHTML =
+    'Active days with trades: <span class="perf-summary-value">' + activeDays + "</span>";
+  summaryActive.innerHTML =
+    'Trade count: <span class="perf-summary-value">' + userTrades.length + " total trades</span>";
 
   // Donut chart: profitable vs loss vs breakeven days
   if (chartSvg && chartTooltip) {
-    // Clear old slices except the background circle
+    const bgCircle = chartSvg.querySelector(".performance-chart-bg");
     const oldSlices = chartSvg.querySelectorAll("path[data-segment]");
     oldSlices.forEach((el) => el.remove());
 
@@ -1658,67 +1683,99 @@ function renderPerformance() {
       else breakevenDays += 1;
     });
 
-    const totalDays = profitableDays + losingDays + breakevenDays || 1;
+    const totalDays = profitableDays + losingDays + breakevenDays;
     const segments = [
       { key: "profitable", value: profitableDays, color: "#43d19e" },
       { key: "loss", value: losingDays, color: "#ff4e6a" },
       { key: "breakeven", value: breakevenDays, color: "#858cb0" },
     ].filter((s) => s.value > 0);
 
-    let cumulative = 0;
     const center = 60;
     const radius = 40;
 
-    segments.forEach((seg) => {
-      const startAngle = (cumulative / totalDays) * 2 * Math.PI;
-      const endAngle = ((cumulative + seg.value) / totalDays) * 2 * Math.PI;
-      cumulative += seg.value;
-
-      const x1 = center + radius * Math.cos(startAngle - Math.PI / 2);
-      const y1 = center + radius * Math.sin(startAngle - Math.PI / 2);
-      const x2 = center + radius * Math.cos(endAngle - Math.PI / 2);
-      const y2 = center + radius * Math.sin(endAngle - Math.PI / 2);
-      const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
-
-      const pathData = [
-        `M ${center} ${center}`,
-        `L ${x1} ${y1}`,
-        `A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`,
-        "Z",
-      ].join(" ");
-
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", pathData);
-      path.setAttribute("fill", seg.color);
-      path.dataset.segment = seg.key;
-      chartSvg.appendChild(path);
-    });
-
-    function setTooltip(key) {
-      let label = "";
-      let val = 0;
-      if (key === "profitable") {
-        label = "Profitable days";
-        val = profitableDays;
-      } else if (key === "loss") {
-        label = "Losing days";
-        val = losingDays;
-      } else if (key === "breakeven") {
-        label = "Break-even days";
-        val = breakevenDays;
-      }
-      const pct = totalDays ? ((val / totalDays) * 100).toFixed(1) : "0.0";
-      chartTooltip.textContent = `${label}: ${val} (${pct}%)`;
+    function angleToXY(angle) {
+      const a = angle - Math.PI / 2;
+      return {
+        x: center + radius * Math.cos(a),
+        y: center + radius * Math.sin(a),
+      };
     }
 
-    const legendButtons = document.querySelectorAll(
-      ".performance-chart-legend button[data-segment]"
-    );
-    legendButtons.forEach((btn) => {
-      const key = btn.getAttribute("data-segment");
-      btn.onmouseenter = () => setTooltip(key);
-      btn.onfocus = () => setTooltip(key);
-    });
+    if (segments.length === 0) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const p1 = angleToXY(0);
+      const p2 = angleToXY(Math.PI);
+      const p3 = angleToXY(2 * Math.PI - 0.001);
+      path.setAttribute(
+        "d",
+        `M ${center} ${center} L ${p1.x} ${p1.y} A ${radius} ${radius} 0 1 1 ${p2.x} ${p2.y} A ${radius} ${radius} 0 1 1 ${p3.x} ${p3.y} Z`
+      );
+      path.setAttribute("fill", "#858cb0");
+      path.dataset.segment = "nodata";
+      chartSvg.appendChild(path);
+      if (bgCircle) bgCircle.setAttribute("fill", "transparent");
+      chartTooltip.textContent = "No trading days in range. Change trader or dates.";
+    } else {
+      if (bgCircle) bgCircle.setAttribute("fill", "transparent");
+      let cumulative = 0;
+      segments.forEach((seg) => {
+        const startAngle = (cumulative / totalDays) * 2 * Math.PI;
+        let endAngle = ((cumulative + seg.value) / totalDays) * 2 * Math.PI;
+        cumulative += seg.value;
+        const span = endAngle - startAngle;
+        const p1 = angleToXY(startAngle);
+        let pathData;
+        if (span >= 2 * Math.PI - 0.01) {
+          const pHalf = angleToXY(startAngle + Math.PI);
+          const pEnd = angleToXY(startAngle + 2 * Math.PI - 0.001);
+          pathData = `M ${center} ${center} L ${p1.x} ${p1.y} A ${radius} ${radius} 0 1 1 ${pHalf.x} ${pHalf.y} A ${radius} ${radius} 0 1 1 ${pEnd.x} ${pEnd.y} Z`;
+        } else {
+          const p2 = angleToXY(endAngle);
+          const largeArc = span > Math.PI ? 1 : 0;
+          pathData = `M ${center} ${center} L ${p1.x} ${p1.y} A ${radius} ${radius} 0 ${largeArc} 1 ${p2.x} ${p2.y} Z`;
+        }
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathData);
+        path.setAttribute("fill", seg.color);
+        path.dataset.segment = seg.key;
+        path.setAttribute("role", "img");
+        path.setAttribute("aria-label", seg.key + " days");
+        chartSvg.appendChild(path);
+      });
+
+      function setTooltip(key) {
+        let label = "";
+        let val = 0;
+        if (key === "profitable") {
+          label = "Profitable days";
+          val = profitableDays;
+        } else if (key === "loss") {
+          label = "Losing days";
+          val = losingDays;
+        } else if (key === "breakeven") {
+          label = "Break-even days";
+          val = breakevenDays;
+        }
+        const pct = totalDays ? ((val / totalDays) * 100).toFixed(1) : "0.0";
+        chartTooltip.textContent = `${label}: ${val} (${pct}%)`;
+      }
+
+      const legendButtons = document.querySelectorAll(
+        ".performance-chart-legend button[data-segment]"
+      );
+      legendButtons.forEach((btn) => {
+        const key = btn.getAttribute("data-segment");
+        btn.onmouseenter = () => setTooltip(key);
+        btn.onfocus = () => setTooltip(key);
+      });
+      chartSvg.querySelectorAll("path[data-segment]").forEach((pathEl) => {
+        const key = pathEl.dataset.segment;
+        pathEl.style.cursor = "pointer";
+        pathEl.onmouseenter = () => setTooltip(key);
+        pathEl.onfocus = () => setTooltip(key);
+      });
+      chartTooltip.textContent = "Hover over chart or legend to see breakdown.";
+    }
   }
 }
 
